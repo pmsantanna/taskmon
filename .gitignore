@@ -1,0 +1,30 @@
+# Dependências
+node_modules/
+
+# Build do electron-builder
+dist/
+out/
+*.blockmap
+
+# Saves e config locais (quando rodando fora do %APPDATA%)
+save.json
+config.json
+*.tmp
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# Env
+.env
+.env.*

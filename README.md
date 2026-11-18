@@ -6,6 +6,8 @@ enquanto você trabalha.
 
 ## Rodando
 
+Precisa de [Node.js](https://nodejs.org) 18 ou mais novo.
+
 ```bash
 npm install
 npm start
@@ -17,10 +19,10 @@ O `npm install` do Electron baixa um binário do GitHub, e o proxy corporativo c
 barrar essa parte. Se travar ou falhar no `electron/install.js`:
 
 ```powershell
-npm config set proxy http://proxy.el.com.br:PORTA
-npm config set https-proxy http://proxy.el.com.br:PORTA
+npm config set proxy http://SEU_PROXY:PORTA
+npm config set https-proxy http://SEU_PROXY:PORTA
 $env:ELECTRON_GET_USE_PROXY = "true"
-$env:GLOBAL_AGENT_HTTPS_PROXY = "http://proxy.el.com.br:PORTA"
+$env:GLOBAL_AGENT_HTTPS_PROXY = "http://SEU_PROXY:PORTA"
 npm install
 ```
 
@@ -51,8 +53,13 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 | `renderer/strip.js` | A faixa: loop do jogo, animações, cliques. É a dona do estado |
 | `renderer/panel.js` | O painel: só mostra o estado e manda comandos |
 | `shared/bridge-fallback.js` | Permite abrir os HTML direto no navegador pra mexer no visual |
+| `renderer/*.html` | Casca das duas janelas (faixa e painel) |
+| `assets/icon.png` | Ícone do app e da bandeja (256×256) |
 
-O save fica em `%APPDATA%\taskmon\save.json`.
+O save fica em `%APPDATA%\taskmon\save.json` e as preferências da faixa (largura, posição,
+modo) em `%APPDATA%\taskmon\config.json`. Apague os dois pra começar do zero.
+
+`node_modules/` e `dist/` ficam fora do git (veja o `.gitignore`).
 
 ## Desenvolvendo no navegador
 
