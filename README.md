@@ -40,7 +40,25 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, monitor,
   ficar acima da barra, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
+- **Golpes**: cada criatura tem até 4, aprendidos por nível. Na aba Equipe, o botão **Golpes**
+  troca os ativos (passe o mouse num golpe pra ver os detalhes).
 - Brilhantes: 1 em 256. Lendário escondido no Vulcão. 👀
+
+## Batalha
+
+Turnos no estilo clássico: os dois escolhem um golpe, quem tem **prioridade** age primeiro e,
+empatando, o mais **rápido**. Os dois lados lutam sozinhos (uma IA pontua os golpes).
+
+- **Físico** (⚔) usa Ataque × Defesa, **Mágico** (✦) usa Magia × Resistência, **Status** (◐) não causa dano.
+- Dano: `((2·Nv/5+2)·Poder·A/D)/50+2`, × 1,5 se o golpe é do tipo da criatura, × tipo, × 1,5 no crítico, × 0,85–1.
+- **Estágios** de −6 a +6 em Ataque, Defesa, Magia, Resistência, Velocidade, Precisão e Evasão. Zeram no fim da luta.
+- **Status**: queimadura (perde 1/16 do HP por turno, golpe físico causa metade), veneno (perde 1/8),
+  paralisia (metade da velocidade, 25% de chance de não agir), sono (1 a 3 turnos sem agir).
+  Fogo não se queima, Elétrico não paralisa, Planta é imune a pós. O status some depois da batalha.
+- **PP**: cada golpe gasta 1. Voltam aos poucos andando e de vez depois de desmaiar. Sem nenhum PP: Debater-se.
+- Com 4 golpes e um novo aprendido, troca o mais fraco sozinho (dá pra desligar em Ajustes).
+
+Golpes e quem aprende o quê ficam em `shared/moves.js`.
 
 ## Sprites e tiles customizados
 
@@ -68,7 +86,8 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 |---|---|
 | `main.js` | Processo principal: janela transparente sobre a taskbar, bandeja, save em disco |
 | `preload.js` | Ponte segura (`window.bridge`) entre as páginas e o main |
-| `shared/game.js` | **Regras**: espécies, tipos, zonas, dano, XP, captura, offline. Sem DOM, roda no Node |
+| `shared/game.js` | **Regras**: espécies, tipos, zonas, batalha, XP, captura, offline. Sem DOM, roda no Node |
+| `shared/moves.js` | **Golpes** (físico, mágico, status) e o que cada espécie aprende por nível |
 | `shared/sprites.js` | **Pixel art** 12×12 de cada criatura, com paleta normal e brilhante |
 | `shared/assets.js` | Sprites/tiles em PNG: folhas animadas, tiles infinitos, molduras 9-slice |
 | `renderer/strip.js` | A faixa: loop do jogo, animações, cliques. É a dona do estado |
@@ -92,7 +111,8 @@ As duas conversam via BroadcastChannel e salvam no localStorage.
 ## Mexendo no jogo
 
 - **Nova criatura**: adicione em `SPECIES` (game.js), desenhe a grade em `SPRITES` (sprites.js),
-  coloque em `SPECIES_ORDER` e no `pool` de alguma zona.
+  coloque em `SPECIES_ORDER`, no `pool` de alguma zona e dê uma lista em `LEARNSETS` (moves.js).
+- **Novo golpe**: adicione em `MOVES` (moves.js) e coloque no `LEARNSETS` de quem aprende.
 - **Balanceamento**: `xpToNext` controla a curva de níveis; `typeMult` suaviza as fraquezas;
   `levels`/`pool` de cada zona definem os encontros.
 - **Ritmo**: a cura entre lutas, o intervalo de encontros e a velocidade dos turnos ficam no `update()` do strip.js.

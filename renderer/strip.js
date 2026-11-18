@@ -68,13 +68,15 @@
   // ---------- Estado ----------
   const saved = await bridge.load();
   let state = saved && saved.version === 1 ? { ...G.newGame(), ...saved } : G.newGame();
+  // saves antigos não tinham golpes
+  [...state.team, ...state.box].forEach((c) => G.ensureMoves(c));
   await A.load();
   layout();
 
   const sim = {
     phase: 'walk', t: 0, encounterAt: 3,
     wild: null, wildX: 0, wildAlpha: 1,
-    turnT: 0, nextAttacker: 'lead', autoTries: 0,
+    turnT: 0, queue: [], bl: null, bw: null, log: [], autoTries: 0, ppT: 0,
     lunge: null, floaters: [], capsule: null,
     toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
@@ -87,8 +89,14 @@
     sim.toasts.push({ text, seconds });
   }
 
-  function floater(text, x, y, color = '#fff') {
-    sim.floaters.push({ text, x, y, t: 0, color });
+  function floater(text, x, y, color = '#fff', life = 1.1) {
+    sim.floaters.push({ text, x, y, t: 0, color, life });
+  }
+
+  // Registro da batalha (aparece no painel) e textos de evento.
+  function log(line) {
+    sim.log.push(line);
+    if (sim.log.length > 6) sim.log.shift();
   }
 
   // ---------- Persistência e sincronização com o painel ----------
@@ -102,7 +110,7 @@
     bridge.pushState({
       ...state,
       battle: w && ['appear', 'fight', 'throw', 'shake'].includes(sim.phase)
-        ? { species: w.species, level: w.level, hp: w.hp, max: G.maxHp(w), shiny: w.shiny }
+        ? { species: w.species, level: w.level, hp: w.hp, max: G.maxHp(w), shiny: w.shiny, status: w.status || null, moves: w.moves, log: sim.log }
         : null,
       resting: sim.phase === 'rest',
     });
@@ -127,6 +135,8 @@
     sim.wildX = W + 4;
     sim.wildAlpha = 1;
     sim.autoTries = 0;
+    sim.queue = [];
+    sim.log = [`Um ${name(sim.wild)} selvagem nv ${sim.wild.level} apareceu!`];
     setPhase('appear');
     if (sim.wild.shiny) toast(`Um ${name(sim.wild)} brilhante apareceu!`, 4);
     sync();
@@ -138,24 +148,108 @@
   }
 
   function endBattle() {
+    const lead = G.getLead(state);
+    if (lead) G.afterBattle(lead);
+    sim.queue = [];
+    sim.bl = sim.bw = null;
     sim.wild = null;
     sim.capsule = null;
     setPhase('walk');
     sim.encounterAt = nextEncounter();
   }
 
-  function attack(who) {
-    const lead = G.getLead(state);
-    const [att, def] = who === 'lead' ? [lead, sim.wild] : [sim.wild, lead];
-    const r = G.damage(att, def);
-    def.hp = Math.max(0, def.hp - r.amount);
-    sim.lunge = { who, t: 0 };
-    const x = who === 'lead' ? sim.wildX + S / 2 : leadX + S / 2;
-    const color = r.mult > 1 ? '#fb923c' : r.mult < 1 ? '#a8a29e' : '#fff';
-    floater(`${r.amount}${r.crit ? '!' : ''}`, x, groundY - S / 2, color);
+  // ---------- Turnos (estilo original) ----------
+  const posOf = (who) => (who === 'lead' ? leadX + S / 2 : sim.wildX + S / 2);
+  const nameSide = (who) => (who === 'lead' ? name(G.getLead(state)) : `${name(sim.wild)} selvagem`);
+  const STAT_SHORT = { atk: 'Atq', def: 'Def', mag: 'Mag', res: 'Res', spd: 'Vel', acc: 'Prec', eva: 'Eva' };
 
-    if (sim.wild.hp <= 0) win();
-    else if (lead.hp <= 0) faint();
+  /** Monta a rodada: os dois escolhem golpe e a ordem sai por prioridade/velocidade. */
+  function startRound() {
+    const am = G.chooseMove(sim.bl, sim.bw), bm = G.chooseMove(sim.bw, sim.bl);
+    const a = { who: 'lead', move: am }, b = { who: 'wild', move: bm };
+    sim.queue = G.firstToAct(sim.bl, am, sim.bw, bm) ? [a, b] : [b, a];
+    sim.queue.push({ end: true });
+  }
+
+  function showEvents(events) {
+    for (const e of events) {
+      const x = posOf(e.who), y = groundY - S / 2;
+      const who = nameSide(e.who);
+      switch (e.kind) {
+        case 'use': {
+          const m = G.MOVES[e.move];
+          floater(m.name, x, groundY - S - 4, G.TYPE_COLOR[m.type] || '#fff', 1.2);
+          if (m.cat !== 'status') sim.lunge = { who: e.who, t: 0 };
+          else sim.glow = { who: e.who, t: 0, color: G.TYPE_COLOR[m.type] };
+          log(`${who} usou ${m.name}!`);
+          break;
+        }
+        case 'damage': {
+          const color = e.mult > 1 ? '#fb923c' : e.mult < 1 ? '#a8a29e' : '#fff';
+          floater(`${e.amount}${e.crit ? '!' : ''}`, x, y, color);
+          sim.hit = { who: e.who, t: 0 };
+          if (e.crit) log('Um golpe crítico!');
+          if (e.mult > 1) log('É super efetivo!');
+          if (e.mult < 1) log('Não é muito efetivo…');
+          break;
+        }
+        case 'miss': log('Mas errou!'); floater('errou', posOf(e.who === 'lead' ? 'wild' : 'lead'), y, '#d6d3d1'); break;
+        case 'stat': {
+          const up = e.stages > 0;
+          if (e.failed) { log(`${G.STAT_LABEL[e.stat]} de ${who} não vai mais ${up ? 'subir' : 'cair'}!`); break; }
+          floater(`${STAT_SHORT[e.stat]}${up ? '↑' : '↓'}${Math.abs(e.stages) > 1 ? (up ? '↑' : '↓') : ''}`, x, y - 6, up ? '#86efac' : '#fca5a5');
+          log(`${G.STAT_LABEL[e.stat]} de ${who} ${up ? 'subiu' : 'caiu'}${Math.abs(e.stages) > 1 ? ' muito' : ''}!`);
+          break;
+        }
+        case 'status': {
+          const st = G.STATUS[e.status];
+          floater(st.short, x, y - 6, st.color);
+          log(`${who} ficou ${st.label.toLowerCase()}!`);
+          break;
+        }
+        case 'fail': log('Não teve efeito…'); break;
+        case 'cant':
+          floater(e.why === 'sono' ? 'zzz' : 'PAR', x, y - 6, G.STATUS[e.why].color);
+          log(e.why === 'sono' ? `${who} está dormindo.` : `${who} está paralisado e não consegue se mexer!`);
+          break;
+        case 'wake': log(`${who} acordou!`); break;
+        case 'heal': floater(`+${e.amount}`, x, y, '#4ade80'); log(e.drain ? `${who} sugou energia!` : `${who} recuperou HP!`); break;
+        case 'recoil': floater(`-${e.amount}`, x, y + 4, '#fca5a5'); log(`${who} sofreu o impacto do golpe!`); break;
+        case 'residual': {
+          floater(`-${e.amount}`, x, y, G.STATUS[e.status].color);
+          log(`${who} sofre com ${e.status === 'queimadura' ? 'a queimadura' : 'o veneno'}!`);
+          break;
+        }
+        case 'faint': log(`${who} desmaiou!`); break;
+      }
+    }
+  }
+
+  /** Executa a próxima ação da fila. Devolve o tempo até a próxima. */
+  function nextAction() {
+    if (!sim.queue.length) {
+      if (shouldAutoCatch()) {
+        sim.autoTries++;
+        throwCapsule(pickCapsule(sim.wild));
+        return 0;
+      }
+      startRound();
+    }
+    const act = sim.queue.shift();
+    let events;
+    if (act.end) {
+      events = [...G.endOfTurn(sim.bl), ...G.endOfTurn(sim.bw)];
+      if (!events.length) return 0.15;
+    } else {
+      const [att, def] = act.who === 'lead' ? [sim.bl, sim.bw] : [sim.bw, sim.bl];
+      if (att.c.hp <= 0 || def.c.hp <= 0) return 0;
+      events = G.useMove(att, def, act.move);
+    }
+    showEvents(events);
+    const lead = G.getLead(state);
+    if (lead.hp <= 0) faint();
+    else if (sim.wild.hp <= 0) win();
+    return 0.95;
   }
 
   function win() {
@@ -171,6 +265,12 @@
   function handleXpEvents(events, c) {
     for (const e of events) {
       if (e.type === 'levelup') toast(`${G.SPECIES[c.species].name} subiu pro nível ${e.level}!`);
+      if (e.type === 'learn') {
+        toast(e.replaced
+          ? `${G.SPECIES[c.species].name} esqueceu ${G.MOVES[e.replaced].name} e aprendeu ${G.MOVES[e.move].name}!`
+          : `${G.SPECIES[c.species].name} aprendeu ${G.MOVES[e.move].name}!`, 3.5);
+      }
+      if (e.type === 'learnLater') toast(`${G.SPECIES[c.species].name} pode aprender ${G.MOVES[e.move].name}! Troque no painel.`, 3.5);
       if (e.type === 'evolve') {
         toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4);
         sim.flash = 1;
@@ -180,6 +280,7 @@
 
   function faint() {
     toast(`${name(G.getLead(state))} desmaiou… descansando`);
+    sim.queue = [];
     state.stats.battles++;
     setPhase('rest');
     sync();
@@ -220,7 +321,9 @@
       setPhase('caught');
     } else {
       toast('Escapou!');
-      sim.nextAttacker = 'wild';
+      log(`${name(w)} escapou da cápsula!`);
+      // jogar a cápsula gastou o turno do líder: só o selvagem age nesta rodada
+      sim.queue = [{ who: 'wild', move: G.chooseMove(sim.bw, sim.bl) }, { end: true }];
       sim.turnT = 0.4;
       setPhase('fight');
     }
@@ -233,8 +336,10 @@
     // mensagens
     if (!sim.toast && sim.toasts.length) sim.toast = { ...sim.toasts.shift(), t: 0 };
     if (sim.toast && (sim.toast.t += dt) > sim.toast.seconds) sim.toast = null;
-    sim.floaters = sim.floaters.filter((f) => (f.t += dt) < 1.1);
+    sim.floaters = sim.floaters.filter((f) => (f.t += dt) < f.life);
     if (sim.lunge && (sim.lunge.t += dt) > 0.25) sim.lunge = null;
+    if (sim.glow && (sim.glow.t += dt) > 0.5) sim.glow = null;
+    if (sim.hit && (sim.hit.t += dt) > 0.3) sim.hit = null;
     sim.flash = Math.max(0, sim.flash - dt * 0.8);
     if (sim.phase !== 'rest') sim.anim += dt;
 
@@ -247,6 +352,10 @@
       case 'walk':
         sim.scroll += dt * 26;
         lead.hp = Math.min(max, lead.hp + max * 0.15 * dt); // cura entre batalhas
+        if ((sim.ppT += dt) > 2.5) { // PP volta aos poucos andando
+          sim.ppT = 0;
+          state.team.forEach((c) => G.restorePp(c, 1));
+        }
         if (sim.t >= sim.encounterAt) startEncounter();
         break;
 
@@ -254,7 +363,9 @@
         const k = Math.min(1, sim.t / 0.8);
         sim.wildX = W + 4 + (wildTargetX - W - 4) * (1 - Math.pow(1 - k, 3));
         if (k >= 1) {
-          sim.nextAttacker = G.stats(lead).spd >= G.stats(sim.wild).spd ? 'lead' : 'wild';
+          sim.bl = G.battler(lead, 'lead');
+          sim.bw = G.battler(sim.wild, 'wild');
+          sim.queue = [];
           sim.turnT = 0.4;
           setPhase('fight');
         }
@@ -264,14 +375,7 @@
       case 'fight':
         sim.turnT -= dt;
         if (sim.turnT <= 0) {
-          if (sim.nextAttacker === 'lead' && shouldAutoCatch()) {
-            sim.autoTries++;
-            throwCapsule(pickCapsule(sim.wild));
-            break;
-          }
-          attack(sim.nextAttacker);
-          sim.nextAttacker = sim.nextAttacker === 'lead' ? 'wild' : 'lead';
-          sim.turnT = 0.8;
+          sim.turnT = nextAction();
           if (sim.phase === 'fight') sync();
         }
         break;
@@ -298,6 +402,7 @@
         lead.hp = Math.max(lead.hp, Math.round(max * Math.min(1, sim.t / 8)));
         if (sim.t >= 8) {
           lead.hp = max;
+          G.restorePp(lead);
           endBattle();
           sync();
         }
@@ -363,11 +468,18 @@
     ctx.fill();
   }
 
+  function statusBadge(status, x, y) {
+    const st = G.STATUS[status];
+    roundRect(x - 1, y - 5, 20, 10, 3, st.color);
+    text(st.short, x + 9, y, { size: 7, align: 'center', color: '#0c0a09' });
+  }
+
   function drawHud(lead) {
     frameBox('hud', 2, 3, HUD_W - 4, H - 6, 6, 'rgba(12,10,9,0.55)');
     const max = G.maxHp(lead);
     const midY = H / 2;
     text(`${G.SPECIES[lead.species].name}${lead.shiny ? '✨' : ''}`, 9, midY - 12, { size: 11 });
+    if (lead.status) statusBadge(lead.status, HUD_W - 52, midY - 12);
     text(`Nv ${lead.level}`, HUD_W - 9, midY - 12, { size: 10, color: '#d6d3d1', align: 'right' });
     bar(9, midY - 3, HUD_W - 18, 4, lead.hp / max, hpColor(lead.hp / max));
     bar(9, midY + 3, HUD_W - 18, 2, lead.xp / G.xpToNext(lead.level), '#38bdf8');
@@ -403,6 +515,21 @@
     ctx.globalAlpha = 1;
   }
 
+  // pisca quando leva dano; brilho colorido quando usa golpe de status
+  const blinkAlpha = (who) => (sim.hit && sim.hit.who === who && Math.floor(sim.hit.t * 20) % 2 === 0 ? 0.25 : 1);
+
+  function drawGlow(who, x, y) {
+    if (!sim.glow || sim.glow.who !== who) return;
+    const k = sim.glow.t / 0.5;
+    ctx.save();
+    ctx.globalAlpha = 0.55 * (1 - k);
+    ctx.fillStyle = sim.glow.color || '#fff';
+    ctx.beginPath();
+    ctx.arc(x + S / 2, y + S / 2, S * (0.45 + k * 0.35), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function lungeOffset(who) {
     if (!sim.lunge || sim.lunge.who !== who) return 0;
     return Math.round(Math.sin((Math.PI * sim.lunge.t) / 0.25) * 7);
@@ -428,7 +555,8 @@
     const animated = A.creature(lead.species, lead.shiny).frames > 1; // folha animada dispensa o "pulinho"
     const bob = walking && !animated ? Math.round(Math.abs(Math.sin(sim.t * 9)) * -2) : 0;
     const resting = sim.phase === 'rest';
-    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), y + bob, { alpha: resting ? 0.45 : 1 });
+    drawGlow('lead', leadX, y);
+    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), y + bob, { alpha: resting ? 0.45 : blinkAlpha('lead') });
     if (resting) text('z', leadX + S + 2 + Math.sin(sim.t * 3) * 2, y + 4 - ((sim.t * 6) % 8), { size: 10, color: '#c7d2fe' });
     if (sim.flash > 0) {
       ctx.globalAlpha = sim.flash;
@@ -441,11 +569,13 @@
     const w = sim.wild;
     if (w && sim.phase !== 'shake' && sim.phase !== 'caught') {
       const wx = sim.wildX - lungeOffset('wild');
-      sprite(w.species, w.shiny, wx, y, { flip: true, alpha: sim.wildAlpha });
+      drawGlow('wild', wx, y);
+      sprite(w.species, w.shiny, wx, y, { flip: true, alpha: sim.wildAlpha * blinkAlpha('wild') });
       if (['appear', 'fight', 'throw'].includes(sim.phase)) {
         const max = G.maxHp(w);
         const label = `${G.SPECIES[w.species].name} ${w.level}`;
         text(label, wx + S / 2, y - 12, { size: 9, align: 'center', color: w.shiny ? '#fde047' : '#e7e5e4' });
+        if (w.status) statusBadge(w.status, Math.round(wx + S / 2 + 18), y - 5);
         bar(Math.round(wx + S / 2 - 15), y - 6, 30, 3, w.hp / max, hpColor(w.hp / max));
       }
     }
@@ -465,7 +595,7 @@
 
     // números flutuando
     for (const f of sim.floaters) {
-      ctx.globalAlpha = 1 - f.t / 1.1;
+      ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
       text(f.text, f.x, f.y - f.t * 12, { size: 10, align: 'center', color: f.color });
       ctx.globalAlpha = 1;
     }
@@ -558,6 +688,14 @@
       case 'autoCatch':
         state.settings.autoCatch = !!cmd.value;
         break;
+      case 'autoMoves':
+        state.settings.autoMoves = !!cmd.value;
+        break;
+      case 'setMoves': {
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        if (c && G.setMoves(c, cmd.moves)) toast(`Golpes de ${G.SPECIES[c.species].name} atualizados`);
+        break;
+      }
       case 'reset':
         state = G.newGame();
         endBattle();

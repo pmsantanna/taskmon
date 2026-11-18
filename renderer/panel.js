@@ -12,6 +12,8 @@
   let state = null;
   let lastKey = '';
   let heroKey = '';
+  let editing = null; // uid da criatura com o editor de golpes aberto
+  let draft = [];     // golpes marcados no editor
 
   const TABS = [
     { id: 'team', label: 'Equipe' },
@@ -43,6 +45,58 @@
   }
 
   const typeBadge = (t) => `<span class="type" style="background:${G.TYPE_COLOR[t]}">${G.TYPE_LABEL[t]}</span>`;
+  const statusBadge = (st) => (st ? `<span class="st" style="background:${G.STATUS[st].color}" title="${G.STATUS[st].label}">${G.STATUS[st].short}</span>` : '');
+
+  function moveChip(id, c) {
+    const m = G.MOVES[id];
+    const cat = G.CATEGORY[m.cat];
+    const pp = `${c.pp?.[id] ?? m.pp}/${m.pp} PP`;
+    const power = m.cat === 'status' ? '—' : m.power;
+    return `<div class="move" style="--t:${G.TYPE_COLOR[m.type]}" title="${esc(moveTip(m))}">
+      <b>${esc(m.name)}</b>
+      <span><i style="color:${cat.color}">${cat.icon}</i> ${power} · <em data-pp-of="${c.uid}" data-move="${id}">${pp}</em></span>
+    </div>`;
+  }
+
+  function moveTip(m) {
+    const parts = [`${G.TYPE_LABEL[m.type]} · ${G.CATEGORY[m.cat].label}`];
+    if (m.cat !== 'status') parts.push(`Poder ${m.power}`);
+    parts.push(`Precisão ${m.acc == null ? '—' : m.acc + '%'}`);
+    if (m.priority) parts.push(`Prioridade +${m.priority}`);
+    if (m.crit) parts.push('Crítico alto');
+    if (m.drain) parts.push(`Recupera ${m.drain * 100}% do dano`);
+    if (m.recoil) parts.push(`Recuo de ${Math.round(m.recoil * 100)}%`);
+    if (m.heal) parts.push(`Cura ${m.heal * 100}% do HP`);
+    const e = m.effect;
+    if (e && e.status) parts.push(`${e.chance ? Math.round(e.chance * 100) + '%: ' : ''}${G.STATUS[e.status].label}`);
+    if (e && e.stat) {
+      const who = e.target === 'self' ? 'próprio' : 'alvo';
+      const st = Object.entries(e.stat).map(([k, v]) => `${G.STAT_LABEL[k]} ${v > 0 ? '+' : ''}${v}`).join(', ');
+      parts.push(`${e.chance ? Math.round(e.chance * 100) + '%: ' : ''}${st} (${who})`);
+    }
+    return parts.join(' · ');
+  }
+
+  function moveEditor(c) {
+    return `<div class="editor">
+      <div class="muted">Escolha até 4 golpes (${draft.length}/4):</div>
+      <div class="known">
+        ${c.known.map((id) => {
+          const on = draft.includes(id);
+          const m = G.MOVES[id];
+          return `<label class="pick ${on ? 'on' : ''}" style="--t:${G.TYPE_COLOR[m.type]}" title="${esc(moveTip(m))}">
+            <input type="checkbox" data-pick="${id}" ${on ? 'checked' : ''} ${!on && draft.length >= 4 ? 'disabled' : ''}>
+            <b>${esc(m.name)}</b><span>${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power}</span>
+          </label>`;
+        }).join('')}
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-cmd="saveMoves" data-uid="${c.uid}" ${draft.length ? '' : 'disabled'}>Salvar</button>
+        <button class="btn" data-cmd="cancelMoves">Cancelar</button>
+      </div>
+    </div>`;
+  }
+
   const bar = (ratio, color) => `<div class="bar"><i style="width:${Math.round(G.clamp(ratio, 0, 1) * 100)}%;background:${color}"></i></div>`;
 
   function uiIcon(name, fallback) {
@@ -114,9 +168,10 @@
               <div class="wild"><small id="h-wild"></small>${spr(b.species, { size: 64, shiny: b.shiny, flip: true })}</div>` : '<span></span>'}
           </div>
           <div class="info">
-            <div class="row1"><b>${esc(nameOf(lead))}</b><span class="lv" id="h-lv"></span>${typeBadge(sp.type)}<span class="grow"></span><span class="nums" id="h-nums"></span></div>
+            <div class="row1"><b>${esc(nameOf(lead))}</b><span class="lv" id="h-lv"></span>${typeBadge(sp.type)}<span id="h-st"></span><span class="grow"></span><span class="nums" id="h-nums"></span></div>
             <div class="bars"><div class="bar"><i id="h-hp"></i></div><div class="bar"><i id="h-xp" style="background:var(--xp)"></i></div></div>
             <div class="status" id="h-status"></div>
+            <div class="log" id="h-log"></div>
           </div>
         </div>`;
     }
@@ -128,11 +183,21 @@
     hp.style.width = `${Math.round(G.clamp(hpR, 0, 1) * 100)}%`;
     hp.style.background = hpR > 0.5 ? 'var(--hp)' : hpR > 0.2 ? '#facc15' : 'var(--danger)';
     $('h-xp').style.width = `${Math.round(G.clamp(lead.xp / need, 0, 1) * 100)}%`;
-    if (b && $('h-wild')) $('h-wild').textContent = `${G.SPECIES[b.species].name} nv ${b.level} · ${b.hp}/${b.max}`;
+    if (b && $('h-wild')) $('h-wild').innerHTML = `${esc(G.SPECIES[b.species].name)} nv ${b.level} · ${b.hp}/${b.max} ${statusBadge(b.status)}`;
+    $('h-st').innerHTML = statusBadge(lead.status);
+    const logEl = $('h-log');
+    const lines = b && b.log ? b.log.slice(-3) : [];
+    logEl.innerHTML = lines.map((l) => `<div>${esc(l)}</div>`).join('');
+    logEl.hidden = !lines.length;
     const st = $('h-status');
     if (state.resting) st.innerHTML = '<b>Descansando…</b> recupera o HP em alguns segundos.';
     else if (b) st.innerHTML = `Batalhando contra <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>. Clique nele na barra pra lançar uma cápsula!`;
     else st.innerHTML = `Explorando <b>${esc(zoneOf(state.zone).name)}</b>…`;
+    // PP do líder mudam a cada golpe: atualiza os chips sem redesenhar tudo
+    document.querySelectorAll(`[data-pp-of="${lead.uid}"]`).forEach((el) => {
+      const id = el.dataset.move, m = G.MOVES[id];
+      el.textContent = `${lead.pp?.[id] ?? m.pp}/${m.pp} PP`;
+    });
   }
 
   // ---------- Abas ----------
@@ -154,7 +219,7 @@
       <div class="mon ${isLead ? 'lead' : ''}">
         <div class="portrait">${spr(c.species, { shiny: c.shiny, size: 48 })}</div>
         <div>
-          <div class="nm">${esc(nameOf(c))} ${isLead ? '<span class="tag">LÍDER</span>' : ''}</div>
+          <div class="nm">${esc(nameOf(c))} ${isLead ? '<span class="tag">LÍDER</span>' : ''} ${statusBadge(c.status)}</div>
           <div class="sub">Nv ${c.level} ${typeBadge(sp.type)} <span>${evo}</span></div>
           <div class="bars">${bar(c.hp / max, 'var(--hp)')}${bar(c.xp / need, 'var(--xp)')}</div>
           <div class="nums">HP ${Math.round(c.hp)}/${max} · XP ${c.xp}/${need}</div>
@@ -162,7 +227,10 @@
         <div class="actions">
           ${isLead ? '' : `<button class="btn primary" data-cmd="setLead" data-uid="${c.uid}">★ Líder</button>`}
           <button class="btn" data-cmd="toBox" data-uid="${c.uid}" ${state.team.length <= 1 ? 'disabled' : ''}>→ Caixa</button>
+          <button class="btn" data-cmd="editMoves" data-uid="${c.uid}">Golpes${c.known.length > c.moves.length ? ` <span class="new">${c.known.length - c.moves.length}</span>` : ''}</button>
         </div>
+        <div class="moves">${c.moves.map((id) => moveChip(id, c)).join('')}</div>
+        ${editing === c.uid ? moveEditor(c) : ''}
       </div>`;
   }
 
@@ -237,6 +305,10 @@
             <label class="switch"><input type="checkbox" id="auto" ${state.settings.autoCatch ? 'checked' : ''}><span></span></label>
           </div>
           <div class="setting">
+            <div>Aprender golpes sozinho<div class="muted">Com 4 golpes, troca o mais fraco quando aprende um melhor.</div></div>
+            <label class="switch"><input type="checkbox" id="autoMoves" ${state.settings.autoMoves !== false ? 'checked' : ''}><span></span></label>
+          </div>
+          <div class="setting">
             <div>Recomeçar<div class="muted">Apaga equipe, moedas e bestiário.</div></div>
             <button class="btn danger" data-cmd="reset">Recomeçar do zero</button>
           </div>
@@ -297,14 +369,16 @@
     app.innerHTML = views[tab]();
     const auto = $('auto');
     if (auto) auto.addEventListener('change', (e) => send({ type: 'autoCatch', value: e.target.checked }));
+    const am = $('autoMoves');
+    if (am) am.addEventListener('change', (e) => send({ type: 'autoMoves', value: e.target.checked }));
   }
 
   // Redesenha tudo só quando algo "estrutural" muda; o herói atualiza sempre.
   function onState(s) {
     state = s;
     const key = JSON.stringify({
-      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab,
-      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp)]),
+      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft,
+      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status]),
     });
     if (key !== lastKey) {
       lastKey = key;
@@ -327,6 +401,14 @@
     window.scrollTo(0, 0);
   });
 
+  app.addEventListener('change', (e) => {
+    const id = e.target.dataset && e.target.dataset.pick;
+    if (!id) return;
+    if (e.target.checked && !draft.includes(id) && draft.length < 4) draft.push(id);
+    if (!e.target.checked) draft = draft.filter((x) => x !== id);
+    rerender();
+  });
+
   app.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-cmd]');
     if (!b) return;
@@ -338,6 +420,14 @@
       case 'toTeam': send({ type: 'move', uid: d.uid, to: 'team' }); break;
       case 'zone': send({ type: 'zone', id: d.id }); break;
       case 'buy': send({ type: 'buy', item: d.item, qty: Number(d.qty) }); break;
+      case 'editMoves': {
+        const c = state.team.find((x) => x.uid === d.uid);
+        if (editing === d.uid) { editing = null; } else if (c) { editing = d.uid; draft = [...c.moves]; }
+        rerender();
+        break;
+      }
+      case 'saveMoves': send({ type: 'setMoves', uid: d.uid, moves: draft }); editing = null; rerender(); break;
+      case 'cancelMoves': editing = null; rerender(); break;
       case 'openSprites': bridge.openSpritesFolder(); break;
       case 'reloadSprites': bridge.reloadAssets(); break;
       case 'reset':
