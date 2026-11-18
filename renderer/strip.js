@@ -4,7 +4,7 @@
 (async () => {
   'use strict';
   const G = window.Game;
-  const SP = window.Sprites;
+  const A = window.Assets;
   const bridge = window.bridge;
 
   // ?speed=10 na URL acelera tudo (útil pra testar no navegador)
@@ -16,33 +16,67 @@
   // ---------- Layout ----------
   const HUD_W = 122;
   let W = 0, H = 0, S = 24, groundY = 0, leadX = 0, wildTargetX = 0;
+  let dpr = 1;
 
+  // Tamanho do canvas em pixels físicos. Chamado no resize, quando o DPI muda (o evento
+  // 'resize' NÃO dispara se só a escala mudar) e quando o main reposiciona a janela.
   function resize() {
-    const dpr = window.devicePixelRatio || 1;
+    dpr = window.devicePixelRatio || 1;
     W = window.innerWidth;
     H = window.innerHeight;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
+  }
+
+  let dprQuery = null;
+  function watchDpr() {
+    if (dprQuery) dprQuery.removeEventListener('change', onDprChange);
+    dprQuery = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    dprQuery.addEventListener('change', onDprChange);
+  }
+  function onDprChange() { resize(); watchDpr(); }
+
+  window.addEventListener('resize', resize);
+  bridge.onRelayout(resize);
+  watchDpr();
+  resize();
+
+  // Posições que dependem do tamanho e do tile de chão da zona atual (recalculado todo quadro).
+  let ground = null, groundScale = 1, bg = null, bgScale = 1;
+  function layout() {
+    const zoneId = state.zone;
+    ground = A.tile(zoneId, 'ground');
+    bg = A.tile(zoneId, 'bg');
     S = Math.max(24, Math.round((H * 0.6) / 12) * 12); // múltiplo de 12 = pixels nítidos
-    groundY = H - 3;
+    if (ground) {
+      const gi = ground.img, c = ground.cfg;
+      groundScale = c.scale || Math.max(1, Math.round((H * 0.28) / gi.height));
+      // "feet": a quantos px (do PNG) da base do tile os pés ficam. Padrão: 35% da altura.
+      const feet = c.feet ?? Math.round(gi.height * 0.35);
+      groundY = Math.round(H - feet * groundScale);
+    } else {
+      groundY = H - 3;
+    }
+    if (bg) bgScale = bg.cfg.scale || H / bg.img.height;
+    if (S > groundY - 4) S = Math.max(12, Math.floor((groundY - 4) / 12) * 12);
     leadX = HUD_W + 18;
     wildTargetX = Math.min(W - S - 8, leadX + S + 56);
   }
-  window.addEventListener('resize', resize);
-  resize();
 
   // ---------- Estado ----------
   const saved = await bridge.load();
   let state = saved && saved.version === 1 ? { ...G.newGame(), ...saved } : G.newGame();
+  await A.load();
+  layout();
 
   const sim = {
     phase: 'walk', t: 0, encounterAt: 3,
     wild: null, wildX: 0, wildAlpha: 1,
     turnT: 0, nextAttacker: 'lead', autoTries: 0,
     lunge: null, floaters: [], capsule: null,
-    toasts: [], toast: null, flash: 0, scroll: 0,
+    toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
 
   const name = (c) => G.SPECIES[c.species].name + (c.shiny ? ' ✨' : '');
@@ -202,6 +236,7 @@
     sim.floaters = sim.floaters.filter((f) => (f.t += dt) < 1.1);
     if (sim.lunge && (sim.lunge.t += dt) > 0.25) sim.lunge = null;
     sim.flash = Math.max(0, sim.flash - dt * 0.8);
+    if (sim.phase !== 'rest') sim.anim += dt;
 
     const lead = G.getLead(state);
     if (!lead) return;
@@ -294,17 +329,31 @@
     return r > 0.5 ? '#4ade80' : r > 0.2 ? '#facc15' : '#ef4444';
   }
 
-  function sprite(id, shiny, x, y, { flip = false, alpha = 1, size = S } = {}) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    if (flip) {
-      ctx.translate(Math.round(x + size), Math.round(y));
-      ctx.scale(-1, 1);
-      ctx.drawImage(SP.getSprite(id, shiny), 0, 0, size, size);
-    } else {
-      ctx.drawImage(SP.getSprite(id, shiny), Math.round(x), Math.round(y), size, size);
-    }
-    ctx.restore();
+  /** Criatura (PNG customizado animado ou pixel art), encaixada numa caixa size×size. */
+  function sprite(id, shiny, x, y, { flip = false, alpha = 1, size = S, t = sim.anim } = {}) {
+    const sheet = A.creature(id, shiny);
+    A.drawSheet(ctx, sheet, A.frameAt(sheet, t), x, y, size, size, { flip, alpha });
+  }
+
+  function itemSprite(id, x, y, { size, alpha = 1 } = {}) {
+    const sheet = A.item(id);
+    A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), x, y, size, size, { alpha });
+  }
+
+  /** Moldura 9-slice se existir ui/<name>.png; senão, retângulo arredondado. */
+  function frameBox(name, x, y, w, h, r, fill) {
+    const f = A.ui(name);
+    if (f) A.drawNine(ctx, f, x, y, w, h);
+    else roundRect(x, y, w, h, r, fill);
+  }
+
+  function icon(name, x, y, size) {
+    const f = A.ui(name);
+    if (!f) return false;
+    ctx.imageSmoothingEnabled = false;
+    const k = size / Math.max(f.img.width, f.img.height);
+    ctx.drawImage(f.img, Math.round(x), Math.round(y - (f.img.height * k) / 2), Math.round(f.img.width * k), Math.round(f.img.height * k));
+    return true;
   }
 
   function roundRect(x, y, w, h, r, fill) {
@@ -315,7 +364,7 @@
   }
 
   function drawHud(lead) {
-    roundRect(2, 3, HUD_W - 4, H - 6, 6, 'rgba(12,10,9,0.55)');
+    frameBox('hud', 2, 3, HUD_W - 4, H - 6, 6, 'rgba(12,10,9,0.55)');
     const max = G.maxHp(lead);
     const midY = H / 2;
     text(`${G.SPECIES[lead.species].name}${lead.shiny ? '✨' : ''}`, 9, midY - 12, { size: 11 });
@@ -323,11 +372,25 @@
     bar(9, midY - 3, HUD_W - 18, 4, lead.hp / max, hpColor(lead.hp / max));
     bar(9, midY + 3, HUD_W - 18, 2, lead.xp / G.xpToNext(lead.level), '#38bdf8');
     const caps = (state.items.capsula || 0) + (state.items.super || 0);
-    text(`🪙 ${state.coins}`, 9, midY + 13, { size: 10, color: '#fde68a' });
-    text(`◓ ${caps}`, HUD_W - 9, midY + 13, { size: 10, color: '#99f6e4', align: 'right' });
+    if (icon('coin', 9, midY + 13, 10)) text(`${state.coins}`, 22, midY + 13, { size: 10, color: '#fde68a' });
+    else text(`🪙 ${state.coins}`, 9, midY + 13, { size: 10, color: '#fde68a' });
+    const capsW = (ctx.font = '600 10px "Segoe UI", system-ui, sans-serif', ctx.measureText(String(caps)).width);
+    if (icon('capsule', HUD_W - 9 - capsW - 13, midY + 13, 10)) text(`${caps}`, HUD_W - 9, midY + 13, { size: 10, color: '#99f6e4', align: 'right' });
+    else text(`◓ ${caps}`, HUD_W - 9, midY + 13, { size: 10, color: '#99f6e4', align: 'right' });
   }
 
   function drawGround() {
+    // Tiles infinitos: fundo (parallax lento) + chão, rolando enquanto o líder anda.
+    if (bg) {
+      const h = bg.img.height * bgScale;
+      A.drawTiled(ctx, bg.img, bgScale, sim.scroll * (bg.cfg.speed ?? 0.35), 0, W, H - h + (bg.cfg.offsetY || 0) * bgScale);
+    }
+    if (ground) {
+      const h = ground.img.height * groundScale;
+      A.drawTiled(ctx, ground.img, groundScale, sim.scroll * (ground.cfg.speed ?? 1), 0, W, H - h);
+      return;
+    }
+    if (bg) return;
     const zone = G.ZONES.find((z) => z.id === state.zone) || G.ZONES[0];
     ctx.fillStyle = zone.color;
     ctx.globalAlpha = 0.8;
@@ -346,11 +409,13 @@
   }
 
   function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    layout();
     const lead = G.getLead(state);
 
     if (!state.starterChosen || !lead) {
-      roundRect(2, 3, W - 4, H - 6, 6, 'rgba(12,10,9,0.6)');
+      frameBox('hud', 2, 3, W - 4, H - 6, 6, 'rgba(12,10,9,0.6)');
       text('Clique aqui pra escolher seu parceiro!', W / 2, H / 2, { size: 12, align: 'center', color: '#fde68a' });
       return;
     }
@@ -360,7 +425,8 @@
 
     // líder
     const walking = sim.phase === 'walk';
-    const bob = walking ? Math.round(Math.abs(Math.sin(sim.t * 9)) * -2) : 0;
+    const animated = A.creature(lead.species, lead.shiny).frames > 1; // folha animada dispensa o "pulinho"
+    const bob = walking && !animated ? Math.round(Math.abs(Math.sin(sim.t * 9)) * -2) : 0;
     const resting = sim.phase === 'rest';
     sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), y + bob, { alpha: resting ? 0.45 : 1 });
     if (resting) text('z', leadX + S + 2 + Math.sin(sim.t * 3) * 2, y + 4 - ((sim.t * 6) % 8), { size: 10, color: '#c7d2fe' });
@@ -391,10 +457,10 @@
       const x0 = leadX + S, x1 = wildTargetX + S / 4;
       const cx = x0 + (x1 - x0) * k;
       const cy = y + S / 3 - Math.sin(Math.PI * k) * (H * 0.35);
-      sprite('_capsula', false, cx, cy, { size: capSize });
+      itemSprite(sim.capsule.item, cx, cy, { size: capSize });
     } else if (sim.phase === 'shake' || (sim.phase === 'caught')) {
       const wob = sim.phase === 'shake' ? Math.round(Math.sin(sim.t * 14) * 2) * (Math.floor(sim.t / 0.5) % 2) : 0;
-      sprite('_capsula', false, wildTargetX + S / 4 + wob, groundY - capSize, { size: capSize, alpha: sim.phase === 'caught' ? 1 - sim.t : 1 });
+      itemSprite(sim.capsule.item, wildTargetX + S / 4 + wob, groundY - capSize, { size: capSize, alpha: sim.phase === 'caught' ? 1 - sim.t : 1 });
     }
 
     // números flutuando
@@ -414,7 +480,7 @@
       ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
       const tw = ctx.measureText(t.text).width + 14;
       const tx = Math.max(HUD_W + 4, Math.min(W - tw - 4, (HUD_W + W) / 2 - tw / 2));
-      roundRect(tx, 2, tw, 14, 7, 'rgba(12,10,9,0.85)');
+      frameBox('toast', tx, 2, tw, 14, 7, 'rgba(12,10,9,0.85)');
       text(t.text, tx + tw / 2, 9, { size: 10, align: 'center', color: '#fef3c7' });
       ctx.globalAlpha = 1;
     }

@@ -12,4 +12,10 @@ contextBridge.exposeInMainWorld('bridge', {
   onCommand: (cb) => ipcRenderer.on('cmd', (_e, c) => cb(c)),
   requestState: () => ipcRenderer.send('state:request'),
   onStateRequest: (cb) => ipcRenderer.on('state:request', () => cb()),
+  onRelayout: (cb) => ipcRenderer.on('strip:relayout', () => cb()),
+  // sprites customizados
+  loadAssets: () => ipcRenderer.invoke('assets:load'),
+  onAssetsChanged: (cb) => ipcRenderer.on('assets:changed', () => cb()),
+  openSpritesFolder: () => ipcRenderer.send('assets:openFolder'),
+  reloadAssets: () => ipcRenderer.send('assets:reload'),
 });

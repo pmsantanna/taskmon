@@ -1,0 +1,73 @@
+TASKMON - PASTA DE SPRITES
+==========================
+
+Coloque PNGs aqui e eles substituem a pixel art embutida. Não precisa reiniciar:
+o app percebe arquivos novos sozinho (ou use "Recarregar sprites" na bandeja/painel).
+
+Onde colocar
+------------
+- %APPDATA%\taskmon\sprites\     <- recomendado (funciona até no .exe portátil;
+                                    bandeja > "Abrir pasta de sprites")
+- assets\sprites\ do projeto      <- vai junto no build. A pasta do usuário ganha
+                                    quando os dois têm o mesmo arquivo.
+Pastas que começam com "_" (ex.: _exemplos) são ignoradas.
+
+Nomes dos arquivos (tudo minúsculo)
+-----------------------------------
+creatures\<especie>.png         Criatura olhando pra DIREITA (o selvagem é espelhado).
+                                Animação = quadros lado a lado na horizontal.
+                                Ex.: 4 quadros de 32x32 -> PNG de 128x32.
+                                Se a largura é múltiplo da altura, os quadros são
+                                detectados sozinhos (quadros quadrados).
+creatures\<especie>_shiny.png   Versão brilhante (opcional; sem ela, a cor é girada).
+
+  Espécies: pavio, lampiao, gotinha, mare, brotinho, ipe, capi, capivarao,
+            vagalume, seixo, pedregulho, pipa, boitata
+
+items\capsula.png, items\super.png
+                                Cápsulas (super usa capsula.png se não existir).
+
+tiles\<zona>_ground.png         Chão que repete SEM FIM na horizontal e rola enquanto
+                                o bicho anda. A borda esquerda tem que emendar com a
+                                direita. Fica colado na base da faixa.
+tiles\<zona>_bg.png             Fundo atrás das criaturas, com parallax (rola mais devagar).
+                                Esticado pra altura da faixa.
+tiles\default_ground.png / default_bg.png
+                                Usados nas zonas que não têm tile próprio.
+
+  Zonas: campina, lago, caverna, vulcao
+
+ui\hud.png                      Moldura 9-slice do HUD da faixa (nome/HP/moedas).
+ui\toast.png                    Moldura 9-slice dos avisos na faixa.
+ui\card.png                     Moldura 9-slice dos cartões do painel.
+ui\button.png                   Moldura 9-slice dos botões do painel.
+ui\background.png               Textura que repete no fundo do painel.
+ui\coin.png, ui\capsule.png     Ícones de moeda e cápsula (HUD e topo do painel).
+
+9-slice: a imagem é cortada numa grade 3x3. Os cantos ficam fixos, as bordas
+esticam e o miolo preenche. O corte padrão é 1/3 do menor lado.
+
+Ajustes opcionais: sprites.json
+-------------------------------
+Um JSON nesta pasta, com o caminho do arquivo como chave:
+
+{
+  "creatures/pavio.png":      { "frames": 4, "fps": 8, "size": 1.2, "shinyHue": 150 },
+  "tiles/campina_ground.png": { "scale": 2, "speed": 1, "feet": 4 },
+  "tiles/campina_bg.png":     { "scale": 1, "speed": 0.3, "offsetY": 0 },
+  "ui/hud.png":               { "slice": 4, "scale": 2 },
+  "ui/card.png":              { "slice": [4, 4, 4, 4], "scale": 2, "repeat": "round" }
+}
+
+  frames    quantidade de quadros (se não der pra detectar sozinho)
+  fps       velocidade da animação (padrão 6)
+  size      multiplicador do tamanho da criatura na faixa (padrão 1)
+  shinyHue  graus de giro de cor pro brilhante sem arquivo próprio (padrão 150)
+  scale     ampliação do tile/moldura (padrão: automático pra tile, 1 pra moldura)
+  speed     velocidade de rolagem (chão 1, fundo 0.35)
+  feet      a quantos px (do PNG) da base do chão ficam os pés (padrão 35% da altura)
+  slice     corte do 9-slice: número ou [cima, direita, baixo, esquerda]
+  repeat    como a borda do painel preenche: stretch (padrão), repeat ou round
+
+Dica: pixel art fica nítida em qualquer escala (sem suavização). Pra começar,
+copie o conteúdo de _exemplos\ pra cá e veja funcionando.

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'" />
   <title>Taskmon</title>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; }
@@ -14,6 +14,7 @@
   <script src="../shared/bridge-fallback.js"></script>
   <script src="../shared/game.js"></script>
   <script src="../shared/sprites.js"></script>
+  <script src="../shared/assets.js"></script>
   <script src="strip.js"></script>
 </body>
 </html>

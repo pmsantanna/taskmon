@@ -1,7 +1,7 @@
 // Processo principal do Electron: cria a faixa sobre a barra de tarefas, o painel,
-// o ícone da bandeja e cuida do save em disco.
+// o ícone da bandeja, cuida do save em disco e carrega os sprites customizados.
 
-const { app, BrowserWindow, screen, Tray, Menu, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, Tray, Menu, ipcMain, nativeImage, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -11,10 +11,15 @@ const userFile = (name) => path.join(app.getPath('userData'), name);
 const SAVE_FILE = () => userFile('save.json');
 const CONFIG_FILE = () => userFile('config.json');
 
+// Sprites: os que vêm com o app e os do usuário (estes têm prioridade).
+const APP_SPRITES = path.join(__dirname, 'assets', 'sprites');
+const USER_SPRITES = () => userFile('sprites');
+
 const DEFAULT_CONFIG = {
   width: 460,      // largura da faixa
   offsetX: 230,    // distância da borda esquerda da tela (no Win11 o lado esquerdo costuma estar livre)
   mode: 'taskbar', // 'taskbar' = em cima da barra | 'above' = logo acima dela
+  displayId: null, // null = monitor principal
 };
 
 let strip = null;
@@ -30,13 +35,21 @@ function readJson(file, fallback) {
 
 function writeJsonAtomic(file, data) {
   const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, file);
 }
 
+const saveConfig = () => writeJsonAtomic(CONFIG_FILE(), config);
+const alive = (w) => w && !w.isDestroyed();
+
 // ---------- Posição da faixa ----------
+function targetDisplay() {
+  const all = screen.getAllDisplays();
+  return all.find((d) => d.id === config.displayId) || screen.getPrimaryDisplay();
+}
+
 function stripBounds() {
-  const d = screen.getPrimaryDisplay();
+  const d = targetDisplay();
   const b = d.bounds;
   const wa = d.workArea;
 
@@ -52,11 +65,56 @@ function stripBounds() {
 
   const width = Math.min(config.width, b.width);
   const x = b.x + Math.max(0, Math.min(config.offsetX, b.width - width));
-  return { x, y, width, height };
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
-function placeStrip() {
-  if (strip && !strip.isDestroyed()) strip.setBounds(stripBounds());
+const sameBounds = (a, b) =>
+  Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 &&
+  Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1;
+
+/**
+ * Reposiciona a faixa. No Windows, quando o DPI muda o próprio sistema redimensiona a
+ * janela logo depois (WM_DPICHANGED) e desfaz o nosso setBounds; e um setBounds com os
+ * mesmos números às vezes é ignorado. Por isso "cutucamos" o tamanho (+1px e volta)
+ * e repetimos algumas vezes depois que a poeira baixa.
+ */
+let placeTimers = [];
+function placeStrip({ force = false } = {}) {
+  if (!alive(strip)) return;
+  placeTimers.forEach(clearTimeout);
+  const apply = () => {
+    if (!alive(strip)) return;
+    const want = stripBounds();
+    if (force) strip.setBounds({ ...want, width: want.width + 1 });
+    strip.setBounds(want);
+    strip.webContents.send('strip:relayout');
+  };
+  apply();
+  placeTimers = [120, 400, 1200].map((ms) => setTimeout(apply, ms));
+}
+
+// ---------- Sempre no topo ----------
+// Clicar na barra de tarefas (ou em qualquer janela "topmost") joga ela pra cima da faixa.
+// Só chamar setAlwaysOnTop(true) de novo não adianta: o Electron acha que já está no topo
+// e não faz nada. Desligar e religar força o Windows a reinserir a janela no topo da pilha.
+function reassertTop() {
+  if (!alive(strip)) return;
+  if (!strip.isVisible() || strip.isMinimized()) strip.showInactive();
+  strip.setAlwaysOnTop(false);
+  strip.setAlwaysOnTop(true, 'screen-saver', 1);
+  strip.moveTop();
+}
+
+let lastFix = 0;
+function watchdog() {
+  if (!alive(strip)) return;
+  reassertTop();
+  // Se algo mexeu no tamanho/posição (DPI, barra mudou, explorer reiniciou), corrige.
+  // No máximo a cada 3 s, pra não ficar brigando com arredondamento de escala fracionada.
+  if (!sameBounds(strip.getBounds(), stripBounds()) && Date.now() - lastFix > 3000) {
+    lastFix = Date.now();
+    placeStrip({ force: true });
+  }
 }
 
 // ---------- Janelas ----------
@@ -67,6 +125,9 @@ function createStrip() {
     transparent: true,
     resizable: false,
     movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     focusable: false,
@@ -78,65 +139,154 @@ function createStrip() {
       backgroundThrottling: false, // continua animando mesmo sem foco
     },
   });
-  strip.setAlwaysOnTop(true, 'screen-saver');
+  strip.setAlwaysOnTop(true, 'screen-saver', 1);
   strip.setIgnoreMouseEvents(true, { forward: true });
   strip.loadFile(path.join(__dirname, 'renderer', 'strip.html'));
-  strip.once('ready-to-show', () => strip.showInactive());
+  strip.once('ready-to-show', () => {
+    strip.showInactive();
+    placeStrip({ force: true });
+  });
+  // "Mostrar área de trabalho" (Win+D) e afins escondem a janela: traz de volta.
+  strip.on('hide', () => setTimeout(reassertTop, 300));
+  strip.on('minimize', () => { strip.restore(); reassertTop(); });
 
-  // A barra de tarefas do Windows às vezes "passa por cima" quando é clicada; reafirma o topo.
-  setInterval(() => {
-    if (strip && !strip.isDestroyed()) {
-      strip.setAlwaysOnTop(true, 'screen-saver');
-      strip.moveTop();
-    }
-  }, 2000);
+  setInterval(watchdog, 750);
+}
+
+function panelBounds() {
+  const w = 480, h = 720;
+  const d = targetDisplay();
+  const wa = d.workArea;
+  const sb = alive(strip) ? strip.getBounds() : stripBounds();
+  // Abre logo acima da faixa, alinhado com ela, sem sair da área útil.
+  const x = Math.max(wa.x + 8, Math.min(sb.x, wa.x + wa.width - w - 8));
+  const height = Math.min(h, wa.height - 16);
+  const y = Math.max(wa.y + 8, wa.y + wa.height - height - 8);
+  return { x, y, width: w, height };
 }
 
 function showPanel() {
-  if (panel && !panel.isDestroyed()) {
+  if (alive(panel)) {
+    if (panel.isMinimized()) panel.restore();
     panel.show();
     panel.focus();
     return;
   }
   panel = new BrowserWindow({
-    width: 460,
-    height: 680,
+    ...panelBounds(),
+    minWidth: 400,
+    minHeight: 480,
     title: 'Taskmon',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     autoHideMenuBar: true,
-    backgroundColor: '#141210',
+    backgroundColor: '#12100e',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
     },
   });
+  panel.setMenu(null);
   panel.loadFile(path.join(__dirname, 'renderer', 'panel.html'));
+  panel.once('ready-to-show', () => { panel.show(); panel.focus(); });
   panel.on('closed', () => { panel = null; });
+}
+
+// ---------- Sprites customizados ----------
+function ensureUserSprites() {
+  const root = USER_SPRITES();
+  for (const sub of ['creatures', 'items', 'tiles', 'ui']) fs.mkdirSync(path.join(root, sub), { recursive: true });
+  const readme = path.join(root, 'LEIA-ME.txt');
+  const src = path.join(APP_SPRITES, 'LEIA-ME.txt');
+  if (!fs.existsSync(readme) && fs.existsSync(src)) fs.copyFileSync(src, readme);
+  return root;
+}
+
+function scanPngs(root, rel = '', out = {}) {
+  let entries = [];
+  try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    const r = rel ? `${rel}/${e.name}` : e.name;
+    if (e.isDirectory()) { if (!e.name.startsWith('_')) scanPngs(root, r, out); } // _exemplos etc. ficam de fora
+    else if (/\.png$/i.test(e.name)) out[r.toLowerCase()] = path.join(root, r);
+  }
+  return out;
+}
+
+/** Junta os PNGs do app + do usuário e devolve como data URLs (passa pelo CSP sem drama). */
+function loadAssets() {
+  const files = { ...scanPngs(APP_SPRITES), ...scanPngs(USER_SPRITES()) };
+  const out = {};
+  for (const [rel, abs] of Object.entries(files)) {
+    try { out[rel] = 'data:image/png;base64,' + fs.readFileSync(abs).toString('base64'); } catch { /* ignora */ }
+  }
+  const cfg = {
+    ...readJson(path.join(APP_SPRITES, 'sprites.json'), {}),
+    ...readJson(path.join(USER_SPRITES(), 'sprites.json'), {}),
+  };
+  return { files: out, config: cfg };
+}
+
+function broadcastAssetsChanged() {
+  for (const w of [strip, panel]) if (alive(w)) w.webContents.send('assets:changed');
+}
+
+let watchTimer = null;
+function watchUserSprites() {
+  try {
+    fs.watch(ensureUserSprites(), { recursive: true }, () => {
+      clearTimeout(watchTimer);
+      watchTimer = setTimeout(broadcastAssetsChanged, 400);
+    });
+  } catch (err) {
+    console.warn('Não deu pra observar a pasta de sprites:', err.message);
+  }
 }
 
 // ---------- Bandeja ----------
 function moveBy(dx) {
   config.offsetX = Math.max(0, config.offsetX + dx);
-  writeJsonAtomic(CONFIG_FILE(), config);
+  saveConfig();
   placeStrip();
 }
 
 function buildTrayMenu() {
+  const displays = screen.getAllDisplays();
+  const current = targetDisplay().id;
   return Menu.buildFromTemplate([
     { label: 'Abrir painel', click: showPanel },
     { type: 'separator' },
     { label: '← Mover para a esquerda', click: () => moveBy(-60) },
     { label: '→ Mover para a direita', click: () => moveBy(60) },
     {
+      label: 'Largura',
+      submenu: [360, 460, 600, 800].map((w) => ({
+        label: `${w}px`, type: 'radio', checked: config.width === w,
+        click: () => { config.width = w; saveConfig(); placeStrip({ force: true }); },
+      })),
+    },
+    {
+      label: 'Monitor',
+      visible: displays.length > 1,
+      submenu: displays.map((d, i) => ({
+        label: `${i + 1}: ${d.size.width}×${d.size.height}${d.id === screen.getPrimaryDisplay().id ? ' (principal)' : ''}`,
+        type: 'radio', checked: d.id === current,
+        click: () => { config.displayId = d.id; saveConfig(); placeStrip({ force: true }); },
+      })),
+    },
+    {
       label: 'Ficar acima da barra de tarefas',
       type: 'checkbox',
       checked: config.mode === 'above',
       click: (item) => {
         config.mode = item.checked ? 'above' : 'taskbar';
-        writeJsonAtomic(CONFIG_FILE(), config);
-        placeStrip();
+        saveConfig();
+        placeStrip({ force: true });
       },
     },
+    { type: 'separator' },
+    { label: 'Abrir pasta de sprites', click: () => shell.openPath(ensureUserSprites()) },
+    { label: 'Recarregar sprites', click: broadcastAssetsChanged },
     {
       label: 'Iniciar com o Windows',
       type: 'checkbox',
@@ -152,8 +302,9 @@ function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(icon);
   tray.setToolTip('Taskmon');
-  tray.setContextMenu(buildTrayMenu());
   tray.on('click', showPanel);
+  // Monta o menu na hora de abrir, pra refletir monitores/config atuais.
+  tray.on('right-click', () => tray.popUpContextMenu(buildTrayMenu()));
 }
 
 // ---------- IPC ----------
@@ -162,29 +313,36 @@ ipcMain.on('save:write', (_e, data) => {
   try { writeJsonAtomic(SAVE_FILE(), data); } catch (err) { console.error('Falha ao salvar', err); }
 });
 ipcMain.on('strip:clickthrough', (_e, ignore) => {
-  if (strip && !strip.isDestroyed()) strip.setIgnoreMouseEvents(ignore, { forward: true });
+  if (alive(strip)) strip.setIgnoreMouseEvents(ignore, { forward: true });
 });
 ipcMain.on('panel:open', showPanel);
 ipcMain.on('state:push', (_e, s) => {
   lastState = s;
-  if (panel && !panel.isDestroyed()) panel.webContents.send('state', s);
+  if (alive(panel)) panel.webContents.send('state', s);
 });
 ipcMain.on('state:request', (e) => {
   if (lastState) e.sender.send('state', lastState);
-  if (strip && !strip.isDestroyed()) strip.webContents.send('state:request');
+  if (alive(strip)) strip.webContents.send('state:request');
 });
 ipcMain.on('cmd', (_e, cmd) => {
-  if (strip && !strip.isDestroyed()) strip.webContents.send('cmd', cmd);
+  if (alive(strip)) strip.webContents.send('cmd', cmd);
 });
+ipcMain.handle('assets:load', () => loadAssets());
+ipcMain.on('assets:openFolder', () => shell.openPath(ensureUserSprites()));
+ipcMain.on('assets:reload', broadcastAssetsChanged);
 
 // ---------- Ciclo de vida ----------
 app.whenReady().then(() => {
   config = { ...DEFAULT_CONFIG, ...readJson(CONFIG_FILE(), {}) };
   createStrip();
   createTray();
-  screen.on('display-metrics-changed', placeStrip);
-  screen.on('display-added', placeStrip);
-  screen.on('display-removed', placeStrip);
+  watchUserSprites();
+  const relayout = () => placeStrip({ force: true });
+  screen.on('display-metrics-changed', relayout);
+  screen.on('display-added', relayout);
+  screen.on('display-removed', relayout);
+  powerMonitor.on('resume', relayout);
+  powerMonitor.on('unlock-screen', relayout);
 });
 
 app.on('second-instance', showPanel);
