@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const MV = root.Moves || require('./moves.js');
-  const { MOVES, LEARNSETS } = MV;
+  const { MOVES, LEARNSETS, TMS, tmCompatible } = MV;
   const IT = root.Items || require('./items.js');
   const { NATURES, HELD, WILD_HELD } = IT;
   const NATURE_IDS = Object.keys(NATURES);
@@ -87,6 +87,7 @@
   }
 
   const TEAM_MAX = 6;
+  const TM_DROP_CHANCE = 0.025; // por vitória, se ainda houver MT exclusiva pra achar na zona
   const SHINY_CHANCE = 1 / 256;
   const OFFLINE_CAP_S = 8 * 3600;
 
@@ -284,7 +285,7 @@
   /** Estado de uma criatura dentro da batalha (os estágios zeram quando a luta acaba). */
   function battler(c, side) {
     ensureMoves(c);
-    return { c, side, stages: Object.fromEntries(STAGES.map((k) => [k, 0])), critStage: 0, used: {} };
+    return { c, side, stages: Object.fromEntries(STAGES.map((k) => [k, 0])), critStage: 0, used: {}, protecting: false, protectChain: 0, mustRecharge: false };
   }
 
   function effStat(b, stat, { ignoreDrops = false, ignoreBoosts = false } = {}) {
@@ -362,6 +363,12 @@
     const ev = [];
     const c = att.c;
 
+    if (att.mustRecharge) { // turno perdido depois de um golpe com recarga
+      att.mustRecharge = false;
+      ev.push({ kind: 'cant', who: att.side, why: 'recarga' });
+      return ev;
+    }
+
     // Status que impedem de agir
     if (c.status === 'sono') {
       c.sleep = (c.sleep || 1) - 1;
@@ -379,7 +386,36 @@
     if (id !== 'debater') c.pp[id]--;
     ev.push({ kind: 'use', who: att.side, move: id });
 
-    const selfTarget = m.cat === 'status' && (m.heal || (m.effect && m.effect.target === 'self'));
+    // Proteger: chance cai pra 1/3 a cada uso seguido
+    if (m.protect) {
+      if (rng() < 1 / Math.pow(3, att.protectChain)) {
+        att.protecting = true;
+        att.protectChain++;
+        ev.push({ kind: 'protect', who: att.side });
+      } else {
+        att.protectChain = 0;
+        ev.push({ kind: 'fail', who: att.side });
+      }
+      return ev;
+    }
+    att.protectChain = 0;
+
+    // Descanso: HP cheio e dorme 2 turnos (acorda e age no 3º)
+    if (m.rest) {
+      if (c.hp >= maxHp(c)) { ev.push({ kind: 'fail', who: att.side }); return ev; }
+      ev.push({ kind: 'heal', who: att.side, amount: maxHp(c) - c.hp });
+      c.hp = maxHp(c);
+      c.status = 'sono';
+      c.sleep = 3;
+      ev.push({ kind: 'status', who: att.side, status: 'sono', rest: true });
+      return ev;
+    }
+
+    const selfTarget = m.cat === 'status' && (m.heal || (m.effect && (m.effect.target === 'self' || m.effect.crit)));
+    if (!selfTarget && def.protecting) {
+      ev.push({ kind: 'protected', who: def.side });
+      return ev;
+    }
     if (!selfTarget && rng() >= hitChance(att, def, m)) {
       ev.push({ kind: 'miss', who: att.side });
       return ev;
@@ -400,6 +436,7 @@
         ev.push({ kind: 'damage', who: def.side, amount: r.amount, crit: r.crit, mult: r.mult });
       }
       checkBerry(def, ev);
+      if (m.recharge) att.mustRecharge = true;
       if (m.drain && dealt > 0) {
         const h = Math.min(maxHp(c) - c.hp, Math.max(1, Math.floor(dealt * m.drain)));
         if (h > 0) { c.hp += h; ev.push({ kind: 'heal', who: att.side, amount: h, drain: true }); }
@@ -446,6 +483,7 @@
   function endOfTurn(b) {
     const ev = [];
     const c = b.c;
+    b.protecting = false;
     if (c.hp <= 0) return ev;
     const frac = c.status === 'queimadura' ? 1 / 16 : c.status === 'veneno' ? 1 / 8 : 0;
     if (frac) {
@@ -491,8 +529,13 @@
         if (m.drain && hpR < 0.6) score *= 1.25;
         if (m.recoil && hpR < 0.35) score *= 0.6;
         if (m.priority && foe.c.hp / maxHp(foe.c) < 0.2) score *= 1.6;
+        if (m.recharge) score *= 0.7;
       } else if (m.heal) {
         score = hpR < 0.35 ? 140 : hpR < 0.6 ? 55 : 0;
+      } else if (m.rest) {
+        score = hpR < 0.3 ? 130 : hpR < 0.5 && c.status ? 90 : 0;
+      } else if (m.protect) {
+        score = self.protectChain ? 3 : (foe.c.status === 'veneno' || foe.c.status === 'queimadura' ? 55 : 18);
       } else if (m.effect?.status) {
         score = foe.c.status || statusImmune(foe, m.effect.status, m) ? 0 : m.effect.status === 'sono' ? 75 : 60;
         score *= (m.acc ?? 100) / 100;
@@ -570,6 +613,7 @@
       lead: null,         // uid do líder
       coins: 50,
       items: { capsula: 5, super: 0 },
+      tms: {},                // MTs que o jogador tem (reutilizáveis)
       zone: 'campina',
       dex: { seen: {}, caught: {} },
       settings: { autoCatch: true, autoMoves: true },
@@ -648,7 +692,8 @@
       drop = r > 2.6 ? 'esforco4' : r > 1.6 ? 'esforco3' : r > 0.7 ? 'esforco2' : 'esforco1';
       state.items[drop] = (state.items[drop] || 0) + 1;
     }
-    return { xp, coins, events, drop };
+    const tm = rollTmDrop(state, rng);
+    return { xp, coins, events, drop, tm };
   }
 
   function buy(state, item, qty = 1) {
@@ -659,6 +704,54 @@
     state.coins -= cost;
     state.items[item] = (state.items[item] || 0) + qty;
     return true;
+  }
+
+  // ---------- MTs ----------
+  const hasTm = (state, tmId) => !!(state.tms && state.tms[tmId]);
+
+  function canLearnTm(c, tmId) {
+    return tmCompatible(tmId, c.species, SPECIES[c.species].type);
+  }
+
+  function buyTm(state, tmId) {
+    const tm = TMS[tmId];
+    if (!tm || tm.price == null || hasTm(state, tmId) || state.coins < tm.price) return false;
+    state.coins -= tm.price;
+    state.tms = { ...(state.tms || {}), [tmId]: true };
+    return true;
+  }
+
+  /**
+   * Ensina a MT. Com vaga, o golpe já fica ativo. Sem vaga: troca por `replace` (um dos ativos)
+   * ou, sem replace, só guarda entre os conhecidos. Devolve o resultado ou null.
+   */
+  function teachTm(state, c, tmId, replace = null) {
+    if (!hasTm(state, tmId) || !canLearnTm(c, tmId)) return null;
+    ensureMoves(c);
+    const id = TMS[tmId].move;
+    if (c.moves.includes(id)) return null;
+    if (!c.known.includes(id)) c.known.push(id);
+    if (c.moves.length < 4) {
+      c.moves.push(id);
+      c.pp[id] = MOVES[id].pp;
+      return { move: id, active: true };
+    }
+    if (replace && c.moves.includes(replace)) {
+      c.moves[c.moves.indexOf(replace)] = id;
+      delete c.pp[replace];
+      c.pp[id] = MOVES[id].pp;
+      return { move: id, active: true, replaced: replace };
+    }
+    return { move: id, active: false };
+  }
+
+  /** MT exclusiva que pode cair agora (da zona atual e que o jogador ainda não tem). */
+  function rollTmDrop(state, rng = Math.random) {
+    const pool = Object.keys(TMS).filter((id) => TMS[id].drop && TMS[id].drop.includes(state.zone) && !hasTm(state, id));
+    if (!pool.length || rng() >= TM_DROP_CHANCE) return null;
+    const id = pool[randInt(rng, 0, pool.length - 1)];
+    state.tms = { ...(state.tms || {}), [id]: true };
+    return id;
   }
 
   /** Dá um item pra criatura segurar (null = tirar). O item anterior volta pra mochila. */
@@ -710,6 +803,7 @@
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
+    TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
     NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
     MOVES, LEARNSETS, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,

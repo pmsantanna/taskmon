@@ -224,14 +224,21 @@
         case 'status': {
           const st = G.STATUS[e.status];
           floater(st.short, x, y - 6, st.color);
-          log(`${who} ficou ${st.label.toLowerCase()}!`);
+          log(e.rest ? `${who} dormiu e recuperou a saúde!` : `${who} ficou ${st.label.toLowerCase()}!`);
           break;
         }
         case 'fail': log('Não teve efeito…'); break;
         case 'cant':
+          if (e.why === 'recarga') {
+            floater('...', x, y - 6, '#d6d3d1');
+            log(`${who} precisa recarregar!`);
+            break;
+          }
           floater(e.why === 'sono' ? 'zzz' : 'PAR', x, y - 6, G.STATUS[e.why].color);
           log(e.why === 'sono' ? `${who} está dormindo.` : `${who} está paralisado e não consegue se mexer!`);
           break;
+        case 'protect': floater('Proteger', x, y - 8, '#7dd3fc', 1.1, 9); sim.glow = { who: e.who, t: 0, color: '#7dd3fc' }; log(`${who} se protegeu!`); break;
+        case 'protected': floater('bloqueou', x, y - 8, '#7dd3fc', 1.1, 9); log(`${who} se protegeu do ataque!`); break;
         case 'wake': log(`${who} acordou!`); break;
         case 'heal': floater(`+${e.amount}`, x, y, '#4ade80'); log(e.drain ? `${who} sugou energia!` : `${who} recuperou HP!`); break;
         case 'recoil': floater(`-${e.amount}`, x, y + 4, '#fca5a5'); log(`${who} sofreu o impacto do golpe!`); break;
@@ -276,6 +283,7 @@
     const lead = G.getLead(state);
     const res = G.rewardWin(state, sim.wild);
     floater(`+${res.xp} XP`, leadX + S / 2, groundY - S / 2, '#67e8f9');
+    if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
     if (res.drop) toast(`O ${G.SPECIES[sim.wild.species].name} deixou cair: ${G.SHOP[res.drop].name}!`, 3);
     handleXpEvents(res.events, lead);
     setPhase('win');
@@ -336,6 +344,8 @@
     if (sim.capsule.success) {
       const res = G.rewardWin(state, w);
       handleXpEvents(res.events, G.getLead(state));
+      if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
+      if (res.drop) toast(`Encontrou: ${G.SHOP[res.drop].name}!`, 3);
       G.addCaught(state, w);
       const where = state.box.includes(w) ? ' (foi pra caixa)' : '';
       toast(`Capturou ${name(w)}!${where}`, 3);
@@ -711,6 +721,20 @@
       case 'autoCatch':
         state.settings.autoCatch = !!cmd.value;
         break;
+      case 'buyTm':
+        if (G.buyTm(state, cmd.tm)) toast(`Comprou a ${cmd.tm.toUpperCase()}: ${G.MOVES[G.TMS[cmd.tm].move].name}`);
+        else toast('Não deu pra comprar essa MT');
+        break;
+      case 'teachTm': {
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        const r = c && G.teachTm(state, c, cmd.tm, cmd.replace || null);
+        const nm = c && G.SPECIES[c.species].name;
+        if (!r) toast('Não deu pra ensinar essa MT');
+        else if (r.replaced) toast(`${nm} esqueceu ${G.MOVES[r.replaced].name} e aprendeu ${G.MOVES[r.move].name}!`, 3.5);
+        else if (r.active) toast(`${nm} aprendeu ${G.MOVES[r.move].name}!`, 3);
+        else toast(`${nm} aprendeu ${G.MOVES[r.move].name} (guardado, troque em Golpes)`, 3.5);
+        break;
+      }
       case 'hold': {
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
         if (c && G.hold(state, c, cmd.item || null)) {
