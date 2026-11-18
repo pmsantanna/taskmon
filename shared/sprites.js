@@ -260,6 +260,24 @@
       ],
       pal: { k: K, a: '#14b8a6', w: '#f5f5f4' },
     },
+    // Moeda (ícone do HUD e do painel).
+    _coin: {
+      rows: [
+        '............',
+        '....kkkk....',
+        '...kyyyyk...',
+        '..kywyyyyk..',
+        '..kwyykyyk..',
+        '..kyyykyyk..',
+        '..kyyykyyk..',
+        '..kyyykyyk..',
+        '..kyyyyyok..',
+        '...kyyyok...',
+        '....kkkk....',
+        '............',
+      ],
+      pal: { k: K, y: '#fcd34d', w: '#fef9c3', o: '#d97706' },
+    },
     // Ovo (creche). Dá pra trocar por creatures/_egg.png.
     _egg: {
       rows: [

@@ -629,7 +629,7 @@
       zone: 'campina',
       dex: { seen: {}, caught: {} },
       // catchMode: 'new' = espécies novas e brilhantes | 'all' = todos | 'ask' = pergunta | 'off' = só manual
-      settings: { catchMode: 'new', autoBuy: false, autoMoves: true },
+      settings: { catchMode: 'new', autoBuy: false, autoMoves: true, palette: 'dmg' },
       stats: { battles: 0, wins: 0, caught: 0 },
       lastSaved: Date.now(),
     };
@@ -903,6 +903,7 @@
     delete st.autoCatch;
     if (st.autoBuy === undefined) st.autoBuy = false;
     if (st.autoMoves === undefined) st.autoMoves = true;
+    if (!st.palette) st.palette = 'dmg'; // visual: dmg | pocket | light | color (ver Assets.PALETTES)
     return st;
   }
 

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('bridge', {
   save: (data) => ipcRenderer.send('save:write', data),
   setClickThrough: (ignore) => ipcRenderer.send('strip:clickthrough', ignore),
   openPanel: () => ipcRenderer.send('panel:open'),
+  windowControl: (action) => ipcRenderer.send('panel:win', action),
   pushState: (s) => ipcRenderer.send('state:push', s),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   sendCommand: (c) => ipcRenderer.send('cmd', c),

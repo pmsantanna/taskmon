@@ -52,8 +52,10 @@
     return `<span class="spr-box" style="width:${size}px;height:${size}px"><i class="spr${anim}${flip ? ' flip' : ''}" style="${style}"></i></span>`;
   }
 
-  const typeBadge = (t) => `<span class="type" style="background:${G.TYPE_COLOR[t]}">${G.TYPE_LABEL[t]}</span>`;
-  const statusBadge = (st) => (st ? `<span class="st" style="background:${G.STATUS[st].color}" title="${G.STATUS[st].label}">${G.STATUS[st].short}</span>` : '');
+  // cores via --t: aparecem na paleta Color; nas paletas GB o CSS usa os 4 tons
+  const coin = () => `<span class="coin-ico">${spr('_coin', { size: 12 })}</span>`;
+  const typeBadge = (t) => `<span class="type" style="--t:${G.TYPE_COLOR[t]}">${G.TYPE_LABEL[t]}</span>`;
+  const statusBadge = (st) => (st ? `<span class="st" style="--t:${G.STATUS[st].color}" title="${G.STATUS[st].label}">${G.STATUS[st].short}</span>` : '');
 
   function moveChip(id, c) {
     const m = G.MOVES[id];
@@ -202,7 +204,17 @@
     }`;
   }
 
+  /** Paleta (4 tons) nas variáveis CSS; body.gb nas monocromáticas. */
+  function applyPalette() {
+    const p = A.palette;
+    const root = document.documentElement.style;
+    p.c.forEach((c, i) => root.setProperty(`--c${i}`, c));
+    document.body.classList.toggle('gb', p.gb);
+    document.body.dataset.pal = A.paletteId;
+  }
+
   function applyTheme() {
+    applyPalette();
     let css = '';
     css += nineCss('card', '.card, .hero');
     css += nineCss('button', 'button.btn');
@@ -266,7 +278,7 @@
     $('h-nums').textContent = `HP ${Math.round(lead.hp)}/${max} · XP ${lead.xp}/${need}`;
     const hp = $('h-hp');
     hp.style.width = `${Math.round(G.clamp(hpR, 0, 1) * 100)}%`;
-    hp.style.background = hpR > 0.5 ? 'var(--hp)' : hpR > 0.2 ? '#facc15' : 'var(--danger)';
+    hp.style.background = hpR > 0.5 ? 'var(--hp)' : hpR > 0.2 ? 'var(--hp-mid)' : 'var(--danger)';
     $('h-xp').style.width = `${Math.round(G.clamp(lead.xp / need, 0, 1) * 100)}%`;
     if (b && $('h-wild')) $('h-wild').innerHTML = `${esc(G.SPECIES[b.species].name)} nv ${b.level} · ${b.hp}/${b.max} ${statusBadge(b.status)}`;
     $('h-st').innerHTML = statusBadge(lead.status);
@@ -481,7 +493,7 @@
         ${Object.entries(G.SHOP).map(([id, it]) => `
           <div class="row">
             ${spr(id, { item: true, size: 32 })}
-            <span class="label"><b>${esc(it.name)}</b><span class="muted">${it.price} 🪙 · ${it.grit
+            <span class="label"><b>${esc(it.name)}</b><span class="muted">${it.price}${coin()} · ${it.grit
               ? `esforço ${it.grit[0] === it.grit[1] ? it.grit[0] : `${it.grit[0]}–${it.grit[1]}`} → +1`
               : `${it.mult}× chance`} · você tem ${state.items[id] || 0}</span></span>
             <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
@@ -493,7 +505,7 @@
           <div class="row">
             ${spr(id, { item: true, size: 28 })}
             <span class="label"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
-              <span class="muted">${it.price} 🪙 · na mochila ${state.items[id] || 0} · em uso ${[...state.team, ...state.box].filter((c) => c.held === id).length}</span></span>
+              <span class="muted">${it.price}${coin()} · na mochila ${state.items[id] || 0} · em uso ${[...state.team, ...state.box].filter((c) => c.held === id).length}</span></span>
             <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
           </div>`).join('')}
       </div></div>`;
@@ -507,7 +519,7 @@
         const canTeach = have && [...state.team, ...state.box].some((c) => G.canLearnTm(c, t) && !c.moves.includes(tm.move));
         let foot;
         if (have) foot = `<span class="tag">TENHO</span>${canTeach ? '<span class="muted">pode ensinar</span>' : ''}`;
-        else if (tm.price != null) foot = `<span class="muted">${tm.price} 🪙</span>`;
+        else if (tm.price != null) foot = `<span class="muted">${tm.price}${coin()}</span>`;
         else foot = `<span class="tag excl">EXCLUSIVA</span><span class="muted">${tm.drop.map((z) => esc(G.ZONES.find((x) => x.id === z).name)).join(', ')}</span>`;
         return `<button class="tm ${have ? 'have' : ''}" style="--t:${G.TYPE_COLOR[m.type]}" data-cmd="tmInfo" data-tm="${t}">
           <span class="tm-no">${t.toUpperCase()}</span>
@@ -542,6 +554,15 @@
     settings() {
       const custom = A.list();
       return `
+        <div class="card"><h2>Tela <span>${esc(A.palette.name)}</span></h2>
+          <div class="palettes">${Object.entries(A.PALETTES).map(([id, p]) => `
+            <button class="pal ${A.paletteId === id ? 'on' : ''}" data-cmd="palette" data-id="${id}">
+              ${esc(p.name)}
+              <span class="sw">${p.c.map((c) => `<i style="background:${c}"></i>`).join('')}</span>
+            </button>`).join('')}
+          </div>
+        </div>
+
         <div class="card"><h2>Jogo</h2>
           <div class="setting">
             <div>Captura<div class="muted">Quando lançar cápsulas sozinho. Clicar no selvagem sempre lança.</div></div>
@@ -631,7 +652,7 @@
       const have = G.hasTm(state, t);
       let get;
       if (have) get = '<span class="tag">VOCÊ TEM</span>';
-      else if (tm.price != null) get = `<button class="btn primary" data-cmd="buyTm" data-tm="${t}" ${state.coins < tm.price ? 'disabled' : ''}>Comprar por ${tm.price} 🪙</button>`;
+      else if (tm.price != null) get = `<button class="btn primary" data-cmd="buyTm" data-tm="${t}" ${state.coins < tm.price ? 'disabled' : ''}>Comprar por ${tm.price}${coin()}</button>`;
       else get = `<span class="tag excl">EXCLUSIVA</span> <span class="muted">cai em batalhas: ${tm.drop.map((z) => esc(G.ZONES.find((x) => x.id === z).name)).join(', ')}</span>`;
       body = `<div class="md-tm"><b>${t.toUpperCase()}</b> ${get}</div>
         ${moveDetails(tm.move)}
@@ -682,8 +703,8 @@
   }
 
   function renderHeader() {
-    $('coins').innerHTML = `${uiIcon('coin', '🪙')} ${state.coins}`;
-    $('caps').innerHTML = `${uiIcon('capsule', '◓')} ${state.items.capsula || 0} + ${state.items.super || 0}`;
+    $('coins').innerHTML = `${uiIcon('coin', spr('_coin', { size: 12 }))} ${state.coins}`;
+    $('caps').innerHTML = `${uiIcon('capsule', spr('capsula', { item: true, size: 12 }))} ${state.items.capsula || 0}+${state.items.super || 0}`;
   }
 
   function render() {
@@ -705,6 +726,7 @@
   // Redesenha tudo só quando algo "estrutural" muda; o herói atualiza sempre.
   function onState(s) {
     state = s;
+    if (s.settings && s.settings.palette && s.settings.palette !== A.paletteId) A.setPalette(s.settings.palette); // chama rerender via onChange
     const key = JSON.stringify({
       ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf, modal: modalState,
       eggs: (s.eggs || []).map((e) => e.id), daycare: s.daycare && [s.daycare.mons.map((c) => [c.uid, c.held]), !!s.daycare.egg],
@@ -722,6 +744,8 @@
   }
 
   const rerender = () => { lastKey = ''; heroKey = ''; if (state) onState(state); };
+
+  document.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => bridge.windowControl(b.dataset.win)));
 
   $('gear').addEventListener('click', () => {
     tab = tab === 'settings' ? 'team' : 'settings';
@@ -763,6 +787,7 @@
       case 'moveInfo': openModal({ kind: 'move', id: d.move, uid: d.uid || null }); break;
       case 'tmInfo': openModal({ kind: 'tm', id: d.tm, teaching: null }); break;
       case 'closeModal': modal.close(); break;
+      case 'palette': send({ type: 'palette', value: d.id }); A.setPalette(d.id); break;
       case 'catchYes': send({ type: 'catchAnswer', yes: true }); break;
       case 'catchNo': send({ type: 'catchAnswer', yes: false }); break;
       case 'lock': send({ type: 'lock', uid: d.uid }); break;

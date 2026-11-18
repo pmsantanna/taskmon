@@ -231,7 +231,8 @@ function showPanel() {
     title: 'Taskmon',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     autoHideMenuBar: true,
-    backgroundColor: '#12100e',
+    frame: false, // a moldura é desenhada pelo painel (estilo Game Boy)
+    backgroundColor: '#0f380f',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -380,6 +381,11 @@ ipcMain.on('strip:clickthrough', (_e, ignore) => {
   stripGrabbing = !ignore;
 });
 ipcMain.on('panel:open', showPanel);
+ipcMain.on('panel:win', (_e, action) => {
+  if (!alive(panel)) return;
+  if (action === 'min') panel.minimize();
+  if (action === 'close') panel.close();
+});
 ipcMain.on('state:push', (_e, s) => {
   lastState = s;
   if (alive(panel)) panel.webContents.send('state', s);

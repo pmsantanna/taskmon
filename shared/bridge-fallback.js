@@ -42,6 +42,7 @@
     load: async () => JSON.parse(localStorage.getItem('taskmon-save') || 'null'),
     save: (data) => localStorage.setItem('taskmon-save', JSON.stringify(data)),
     setClickThrough: () => {},
+    windowControl: (action) => { if (action === 'close') window.close(); },
     openPanel: () => window.open('panel.html', 'taskmon-panel', 'width=480,height=720'),
     pushState: (s) => ch.postMessage({ kind: 'state', payload: s }),
     onState: (cb) => listeners.state.push(cb),

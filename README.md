@@ -130,6 +130,15 @@ seguram um, que vem junto na captura. Os de uso único valem 1× por batalha e v
 
 Naturezas e itens ficam em `shared/items.js`.
 
+## Visual
+
+Estilo Game Boy: tudo em 4 tons, caixas de texto com moldura dupla, menus com cursor ▶ e fontes
+de pixel (Press Start 2P e VT323, licença OFL, em `assets/fonts/`, funcionam offline). O painel não
+tem a moldura do Windows: o topo é desenhado pelo app (arraste por ele; _ minimiza, X fecha).
+Em ⚙ Ajustes → **Tela** dá pra trocar a paleta: Clássico (verde), Pocket (cinza), Light (azulado) ou
+Color (mantém as cores dos sprites e dos tipos). Nas paletas monocromáticas os sprites são convertidos
+pros 4 tons pela luminosidade. As cores ficam em `PALETTES` (shared/assets.js) e o CSS em `renderer/gb.css`.
+
 ## Sprites e tiles customizados
 
 Coloque PNGs em `%APPDATA%\taskmon\sprites\` (bandeja → **Abrir pasta de sprites**) ou em
@@ -165,6 +174,7 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 | `renderer/panel.js` | O painel: só mostra o estado e manda comandos |
 | `shared/bridge-fallback.js` | Permite abrir os HTML direto no navegador pra mexer no visual |
 | `renderer/*.html` | Casca das duas janelas (faixa e painel) |
+| `renderer/gb.css`, `renderer/fonts.css` | Visual Game Boy do painel e as fontes de pixel |
 | `assets/icon.png` | Ícone do app e da bandeja (256×256) |
 | `assets/sprites/` | Sprites que vão junto no build + `LEIA-ME.txt` + `_exemplos/` |
 

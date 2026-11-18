@@ -84,7 +84,68 @@
     return c;
   }
 
+  // ---------- Paletas (estilo Game Boy) ----------
+  // 4 tons, do mais escuro (0) ao mais claro (3). gb = sprites convertidos pros 4 tons.
+  const PALETTES = {
+    dmg:    { name: 'Clássico (verde)', gb: true,  c: ['#0f380f', '#306230', '#8bac0f', '#9bbc0f'] },
+    pocket: { name: 'Pocket (cinza)',   gb: true,  c: ['#1a1a17', '#55554b', '#a5a593', '#dcdccb'] },
+    light:  { name: 'Light (azulado)',  gb: true,  c: ['#0c2a3a', '#1f5d6e', '#6fb3b0', '#c9ead7'] },
+    color:  { name: 'Color (colorido)', gb: false, c: ['#1b1b2f', '#3d4a7a', '#a9b8e6', '#f4f4ec'] },
+  };
+  let palette = PALETTES.dmg;
+  let paletteId = 'dmg';
+
+  function setPalette(id) {
+    if (!PALETTES[id] || id === paletteId) return false;
+    paletteId = id;
+    palette = PALETTES[id];
+    cache.clear();
+    version++;
+    listeners.forEach((cb) => cb());
+    return true;
+  }
+
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+
+  /** Converte uma imagem pros 4 tons da paleta pela luminosidade (transparência mantida). */
+  function toPalette(src) {
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const img = ctx.getImageData(0, 0, c.width, c.height);
+    const d = img.data;
+    const tones = palette.c.map(hexRgb);
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 8) continue;
+      const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const t = tones[l < 60 ? 0 : l < 135 ? 1 : l < 205 ? 2 : 3];
+      d[i] = t[0]; d[i + 1] = t[1]; d[i + 2] = t[2]; d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  /** Aplica a paleta numa folha (cacheada por paleta). */
+  function themed(ck, build) {
+    const key = `${paletteId}:${ck}`;
+    if (cache.has(key)) return cache.get(key);
+    let sheet = build();
+    if (palette.gb) sheet = { ...sheet, src: toPalette(sheet.src), _url: null };
+    cache.set(key, sheet);
+    return sheet;
+  }
+
   function creature(id, shiny = false) {
+    return themed(`c:${id}:${shiny ? 1 : 0}`, () => creatureRaw(id, shiny));
+  }
+
+  function item(id) {
+    return themed(`i:${id}`, () => itemRaw(id));
+  }
+
+  function creatureRaw(id, shiny = false) {
     const ck = `c:${id}:${shiny ? 1 : 0}`;
     if (cache.has(ck)) return cache.get(ck);
     let sheet;
@@ -99,7 +160,7 @@
     return sheet;
   }
 
-  function item(id) {
+  function itemRaw(id) {
     const ck = `i:${id}`;
     if (cache.has(ck)) return cache.get(ck);
     const heldDef = root.Items && root.Items.HELD[id];
@@ -219,7 +280,7 @@
   }
 
   function silhouetteUrl(id) {
-    const ck = `sil:${id}`;
+    const ck = `${paletteId}:sil:${id}`;
     if (cache.has(ck)) return cache.get(ck);
     const sheet = creature(id, false);
     const scale = sheet.custom ? 1 : 8;
@@ -230,7 +291,7 @@
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(sheet.src, 0, 0, sheet.fw, sheet.fh, 0, 0, c.width, c.height);
     ctx.globalCompositeOperation = 'source-in';
-    ctx.fillStyle = '#4a443e';
+    ctx.fillStyle = palette.gb ? palette.c[1] : '#4a443e';
     ctx.fillRect(0, 0, c.width, c.height);
     const url = c.toDataURL();
     cache.set(ck, url);
@@ -243,6 +304,7 @@
   root.Assets = {
     load, onChange, get version() { return version; },
     creature, item, tile, ui, has, list, cfgOf,
+    PALETTES, setPalette, get palette() { return palette; }, get paletteId() { return paletteId; },
     frameAt, drawSheet, drawTiled, drawNine, sheetUrl, silhouetteUrl,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

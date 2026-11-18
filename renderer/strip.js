@@ -73,6 +73,12 @@
   G.ensureSettings(state);
   [...state.team, ...state.box, ...state.daycare.mons].forEach((c) => G.ensureMoves(c));
   await A.load();
+  A.setPalette(state.settings.palette);
+  // fontes de pixel antes do primeiro desenho (sem travar se demorarem)
+  await Promise.race([
+    Promise.all(['8px "Press Start 2P"', '16px "VT323"'].map((f) => document.fonts.load(f))).catch(() => {}),
+    new Promise((r) => setTimeout(r, 1500)),
+  ]);
   layout();
 
   const sim = {
@@ -517,28 +523,77 @@
     }
   }
 
-  // ---------- Desenho ----------
-  function text(str, x, y, { size = 10, color = '#fff', align = 'left', bold = true } = {}) {
-    ctx.font = `${bold ? '600 ' : ''}${size}px "Segoe UI", system-ui, sans-serif`;
+  // ---------- Desenho (estilo Game Boy) ----------
+  // Tudo nos 4 tons da paleta (Assets.PALETTES): C(0) mais escuro … C(3) mais claro.
+  const C = (i) => A.palette.c[i];
+  const FONT_UI = '"Press Start 2P", monospace'; // títulos, números, menus (nítida em 8px)
+  const FONT_TX = '"VT323", monospace';          // frases (cabe mais texto)
+
+  /** Texto. outline = contorno escuro pra ler em cima do cenário/barra; sem outline, dentro de caixas. */
+  function text(str, x, y, { size = 8, color = C(0), align = 'left', font = 'ui', outline = false } = {}) {
+    ctx.font = `${size}px ${font === 'ui' ? FONT_UI : FONT_TX}`;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-    ctx.strokeText(str, x, y);
+    x = Math.round(x); y = Math.round(y);
+    if (outline) {
+      ctx.lineJoin = 'miter';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = C(0);
+      ctx.strokeText(str, x, y);
+    }
     ctx.fillStyle = color;
     ctx.fillText(str, x, y);
   }
 
+  function measure(str, size = 8, font = 'ui') {
+    ctx.font = `${size}px ${font === 'ui' ? FONT_UI : FONT_TX}`;
+    return ctx.measureText(str).width;
+  }
+
+  /** Caixa de texto clássica: fundo claro, borda escura de 2px, linha interna e cantos de pixel. */
+  function box(x, y, w, h, { fill = C(3), border = C(0), inner = C(1) } = {}) {
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    ctx.fillStyle = border;
+    ctx.fillRect(x + 1, y, w - 2, h);
+    ctx.fillRect(x, y + 1, w, h - 2);
+    ctx.fillStyle = fill;
+    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    if (inner && w > 10 && h > 10) {
+      ctx.fillStyle = inner;
+      ctx.fillRect(x + 3, y + 3, w - 6, 1);
+      ctx.fillRect(x + 3, y + h - 4, w - 6, 1);
+      ctx.fillRect(x + 3, y + 3, 1, h - 6);
+      ctx.fillRect(x + w - 4, y + 3, 1, h - 6);
+    }
+  }
+
+  /** Barra de HP/XP: moldura escura de 1px e preenchimento. */
   function bar(x, y, w, h, ratio, color) {
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    x = Math.round(x); y = Math.round(y);
+    ctx.fillStyle = C(0);
     ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = C(3);
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
     ctx.fillStyle = color;
-    ctx.fillRect(x, y, Math.round(w * G.clamp(ratio, 0, 1)), h);
+    ctx.fillRect(x + 1, y + 1, Math.round((w - 2) * G.clamp(ratio, 0, 1)), h - 2);
   }
 
   function hpColor(r) {
-    return r > 0.5 ? '#4ade80' : r > 0.2 ? '#facc15' : '#ef4444';
+    if (A.palette.gb) return r > 0.2 || Math.floor(sim.t * 4) % 2 ? C(r > 0.5 ? 0 : 1) : C(2); // pisca quando está baixo
+    return r > 0.5 ? '#3fa34d' : r > 0.2 ? '#d8a10b' : '#c0392b';
+  }
+
+  /** Setinha ▼ de "continua" piscando, desenhada em pixels. */
+  function arrowDown(x, y) {
+    if (Math.floor(performance.now() / 450) % 2) return;
+    ctx.fillStyle = C(0);
+    ctx.fillRect(x, y, 5, 1); ctx.fillRect(x + 1, y + 1, 3, 1); ctx.fillRect(x + 2, y + 2, 1, 1);
+  }
+
+  /** Cursor ▶ de menu, em pixels. */
+  function arrowRight(x, y) {
+    ctx.fillStyle = C(0);
+    ctx.fillRect(x, y - 3, 1, 7); ctx.fillRect(x + 1, y - 2, 1, 5); ctx.fillRect(x + 2, y - 1, 1, 3); ctx.fillRect(x + 3, y, 1, 1);
   }
 
   /** Criatura (PNG customizado animado ou pixel art), encaixada numa caixa size×size. */
@@ -552,11 +607,11 @@
     A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), x, y, size, size, { alpha });
   }
 
-  /** Moldura 9-slice se existir ui/<name>.png; senão, retângulo arredondado. */
-  function frameBox(name, x, y, w, h, r, fill) {
+  /** Moldura 9-slice se existir ui/<name>.png; senão, a caixa de texto clássica. */
+  function frameBox(name, x, y, w, h) {
     const f = A.ui(name);
     if (f) A.drawNine(ctx, f, x, y, w, h);
-    else roundRect(x, y, w, h, r, fill);
+    else box(x, y, w, h);
   }
 
   function icon(name, x, y, size) {
@@ -568,34 +623,32 @@
     return true;
   }
 
-  function roundRect(x, y, w, h, r, fill) {
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    ctx.fillStyle = fill;
-    ctx.fill();
-  }
-
   function statusBadge(status, x, y) {
     const st = G.STATUS[status];
-    roundRect(x - 1, y - 5, 20, 10, 3, st.color);
-    text(st.short, x + 9, y, { size: 7, align: 'center', color: '#0c0a09' });
+    ctx.fillStyle = A.palette.gb ? C(1) : st.color;
+    ctx.fillRect(Math.round(x - 1), Math.round(y - 5), 21, 10);
+    text(st.short, x + 9.5, y + 1, { size: 12, font: 'tx', align: 'center', color: C(3) });
   }
 
   function drawHud(lead) {
-    frameBox('hud', 2, 3, HUD_W - 4, H - 6, 6, 'rgba(12,10,9,0.55)');
+    frameBox('hud', 1, 2, HUD_W - 3, H - 4);
     const max = G.maxHp(lead);
     const midY = H / 2;
-    text(`${G.SPECIES[lead.species].name}${lead.shiny ? '✨' : ''}`, 9, midY - 12, { size: 11 });
-    if (lead.status) statusBadge(lead.status, HUD_W - 52, midY - 12);
-    text(`Nv ${lead.level}`, HUD_W - 9, midY - 12, { size: 10, color: '#d6d3d1', align: 'right' });
-    bar(9, midY - 3, HUD_W - 18, 4, lead.hp / max, hpColor(lead.hp / max));
-    bar(9, midY + 3, HUD_W - 18, 2, lead.xp / G.xpToNext(lead.level), '#38bdf8');
+    const x0 = 8, x1 = HUD_W - 9;
+    text(`${G.SPECIES[lead.species].name.toUpperCase()}${lead.shiny ? '*' : ''}`, x0, midY - 12, { size: 8 });
+    if (lead.status) statusBadge(lead.status, x1 - 46, midY - 12);
+    text(`:L${lead.level}`, x1, midY - 12, { size: 8, align: 'right' });
+    text('HP', x0, midY - 2, { size: 12, font: 'tx', color: C(1) });
+    bar(x0 + 13, midY - 5, x1 - x0 - 13, 6, lead.hp / max, hpColor(lead.hp / max));
+    bar(x0 + 13, midY + 2, x1 - x0 - 13, 4, lead.xp / G.xpToNext(lead.level), C(1));
+    // moedas e cápsulas com os ícones em pixel
     const caps = (state.items.capsula || 0) + (state.items.super || 0);
-    if (icon('coin', 9, midY + 13, 10)) text(`${state.coins}`, 22, midY + 13, { size: 10, color: '#fde68a' });
-    else text(`🪙 ${state.coins}`, 9, midY + 13, { size: 10, color: '#fde68a' });
-    const capsW = (ctx.font = '600 10px "Segoe UI", system-ui, sans-serif', ctx.measureText(String(caps)).width);
-    if (icon('capsule', HUD_W - 9 - capsW - 13, midY + 13, 10)) text(`${caps}`, HUD_W - 9, midY + 13, { size: 10, color: '#99f6e4', align: 'right' });
-    else text(`◓ ${caps}`, HUD_W - 9, midY + 13, { size: 10, color: '#99f6e4', align: 'right' });
+    const yRow = midY + 13;
+    if (!icon('coin', x0 - 2, yRow, 12)) A.drawSheet(ctx, A.creature('_coin'), 0, x0 - 2, yRow - 6, 12, 12);
+    text(`${state.coins}`, x0 + 12, yRow + 1, { size: 15, font: 'tx' });
+    const cw = measure(String(caps), 15, 'tx');
+    if (!icon('capsule', x1 - cw - 14, yRow, 12)) A.drawSheet(ctx, A.item('capsula'), 0, x1 - cw - 14, yRow - 6, 12, 12);
+    text(`${caps}`, x1, yRow + 1, { size: 15, font: 'tx', align: 'right' });
   }
 
   function drawGround() {
@@ -611,8 +664,8 @@
     }
     if (bg) return;
     const zone = G.ZONES.find((z) => z.id === state.zone) || G.ZONES[0];
-    ctx.fillStyle = zone.color;
-    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = A.palette.gb ? C(2) : zone.color;
+    ctx.globalAlpha = 0.9;
     const span = W - HUD_W;
     for (let i = 0; i < Math.ceil(span / 34) + 1; i++) {
       const x = HUD_W + ((((i * 34 - sim.scroll) % span) + span) % span);
@@ -630,7 +683,7 @@
     const k = sim.glow.t / 0.5;
     ctx.save();
     ctx.globalAlpha = 0.55 * (1 - k);
-    ctx.fillStyle = sim.glow.color || '#fff';
+    ctx.fillStyle = A.palette.gb ? C(3) : (sim.glow.color || '#fff');
     ctx.beginPath();
     ctx.arc(x + S / 2, y + S / 2, S * (0.45 + k * 0.35), 0, Math.PI * 2);
     ctx.fill();
@@ -651,8 +704,9 @@
     const lead = G.getLead(state);
 
     if (!state.starterChosen || !lead) {
-      frameBox('hud', 2, 3, W - 4, H - 6, 6, 'rgba(12,10,9,0.6)');
-      text('Clique aqui pra escolher seu parceiro!', W / 2, H / 2, { size: 12, align: 'center', color: '#fde68a' });
+      frameBox('hud', 1, 2, W - 2, H - 4);
+      text('Clique aqui pra escolher seu parceiro!', W / 2, H / 2, { size: 16, font: 'tx', align: 'center' });
+      arrowDown(W - 14, H - 12);
       return;
     }
 
@@ -681,15 +735,20 @@
       drawGlow('wild', wx, y);
       // derrotado: fica caído e meio apagado esperando a captura
       sprite(w.species, w.shiny, wx, y, { flip: true, alpha: (sim.defeated ? 0.5 : 1) * sim.wildAlpha * blinkAlpha('wild'), t: sim.defeated ? 0 : sim.anim });
-      if (sim.defeated && ['prompt', 'down', 'retry'].includes(sim.phase)) {
-        text(sim.phase === 'down' ? 'clique pra capturar' : 'derrotado', wx + S / 2, y - 6, { size: 8, align: 'center', color: '#d6d3d1' });
+      if (sim.defeated && sim.phase === 'down') {
+        text('clique pra capturar', wx + S / 2, y - 6, { size: 14, font: 'tx', align: 'center', color: C(3), outline: true });
       }
       if (!sim.defeated && ['appear', 'fight', 'throw'].includes(sim.phase)) {
         const max = G.maxHp(w);
-        const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''} ${w.level}`;
-        text(label, wx + S / 2, y - 12, { size: 9, align: 'center', color: w.shiny ? '#fde047' : '#e7e5e4' });
-        if (w.status) statusBadge(w.status, Math.round(wx + S / 2 + 18), y - 5);
-        bar(Math.round(wx + S / 2 - 15), y - 6, 30, 3, w.hp / max, hpColor(w.hp / max));
+        // plaquinha do selvagem (como no topo da tela de batalha): nome, nível e HP
+        const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''}${w.shiny ? '*' : ''} :L${w.level}`;
+        const lw = Math.max(44, Math.ceil(measure(label, 13, 'tx')) + 8);
+        const lx = Math.round(Math.min(W - lw - 2, Math.max(HUD_W + 2, wx + S / 2 - lw / 2)));
+        const ly = Math.max(0, y - 17);
+        box(lx, ly, lw, 16, { inner: null });
+        text(label, lx + lw / 2, ly + 6, { size: 13, font: 'tx', align: 'center' });
+        bar(lx + 4, ly + 11, lw - 8, 3, w.hp / max, hpColor(w.hp / max));
+        if (w.status) statusBadge(w.status, lx + lw + 2, ly + 8);
       }
     }
 
@@ -709,7 +768,11 @@
     // números flutuando
     for (const f of sim.floaters) {
       ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
-      text(f.text, f.x, f.y - f.t * 12, { size: f.size || 10, align: 'center', color: f.color });
+      // números/nomes flutuando: tom claro com contorno escuro (no Color, a cor do evento)
+      const fs = (f.size || 10) >= 12 ? 16 : 8;
+      const half = measure(f.text, fs) / 2 + 2; // não deixa o texto entrar embaixo do HUD nem sair da faixa
+      const fx = Math.min(W - half, Math.max(HUD_W + half, f.x));
+      text(f.text, fx, f.y - f.t * 12, { size: fs, align: 'center', color: A.palette.gb ? C(3) : f.color, outline: true });
       ctx.globalAlpha = 1;
     }
 
@@ -721,9 +784,9 @@
         `mouse ${cursor ? `${Math.round(cursor.x)},${Math.round(cursor.y)}` : '—'} ${hit || '-'} · ${clickThrough ? 'atravessa' : 'PEGA'} · dpr ${dpr}`,
         `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · botão ${debug.reader ? 'lido' : 'SEM leitor'} · clique ${debug.lastClick || '—'}`,
       ];
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillStyle = C(0);
       ctx.fillRect(HUD_W, H - 22, W - HUD_W, 22);
-      lines.forEach((l, i) => text(l, HUD_W + 4, H - 16 + i * 10, { size: 8, color: '#a7f3d0' }));
+      lines.forEach((l, i) => text(l, HUD_W + 4, H - 16 + i * 10, { size: 12, font: 'tx', color: C(3) }));
     }
     // pergunta de captura (no lugar dos avisos enquanto espera resposta)
     sim.askRects = null;
@@ -734,27 +797,30 @@
       const q = sim.prompt === 'retry'
         ? `Escapou! Tentar outra? (${left}s)`
         : `Capturar ${nm}${state.dex.caught[w2.species] ? '' : ' (novo!)'}? (${left}s)`;
-      ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
-      const qw = ctx.measureText(q).width;
-      const bw = 30, gap = 4, total = qw + 14 + (bw + gap) * 2;
-      const qx = Math.max(HUD_W + 4, Math.min(W - total - 4, (HUD_W + W) / 2 - total / 2));
-      frameBox('toast', qx, 2, total, 15, 7, 'rgba(12,10,9,0.9)');
-      text(q, qx + 7 + qw / 2, 9.5, { size: 10, align: 'center', color: '#fef3c7' });
-      const yesX = qx + qw + 14, noX = yesX + bw + gap;
-      roundRect(yesX, 4, bw, 11, 5, '#0f766e');
-      text('Sim', yesX + bw / 2, 9.5, { size: 9, align: 'center' });
-      roundRect(noX, 4, bw, 11, 5, '#44403c');
-      text('Não', noX + bw / 2, 9.5, { size: 9, align: 'center' });
-      sim.askRects = { yes: [yesX, 2, bw, 15], no: [noX, 2, bw, 15] };
+      // caixa de texto com a pergunta + menu ▶SIM NÃO (o cursor segue o mouse)
+      const qw = measure(q, 15, 'tx');
+      const optW = 34, menuW = optW * 2 + 6;
+      const total = Math.ceil(qw) + 16 + menuW;
+      const qx = Math.round(Math.max(HUD_W + 2, Math.min(W - total - 2, (HUD_W + W) / 2 - total / 2)));
+      frameBox('toast', qx, 1, total, 17);
+      text(q, qx + 8, 10, { size: 15, font: 'tx' });
+      const yesX = qx + total - menuW - 4, noX = yesX + optW + 4;
+      const over = cursor && hitTest(cursor.x, cursor.y);
+      const sel = over === 'askNo' ? 'no' : 'yes';
+      text('SIM', yesX + 10, 10, { size: 8 });
+      text('NÃO', noX + 10, 10, { size: 8 });
+      arrowRight(sel === 'yes' ? yesX + 3 : noX + 3, 10);
+      sim.askRects = { yes: [yesX, 1, optW, 17], no: [noX, 1, optW, 17] };
     } else if (sim.toast) {
+      // mensagem: caixa de texto no topo com a setinha ▼ piscando
       const t = sim.toast;
-      const a = Math.min(1, t.t / 0.2, (t.seconds - t.t) / 0.3);
+      const a = Math.min(1, t.t / 0.15, (t.seconds - t.t) / 0.25);
       ctx.globalAlpha = Math.max(0, a);
-      ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
-      const tw = ctx.measureText(t.text).width + 14;
-      const tx = Math.max(HUD_W + 4, Math.min(W - tw - 4, (HUD_W + W) / 2 - tw / 2));
-      frameBox('toast', tx, 2, tw, 14, 7, 'rgba(12,10,9,0.85)');
-      text(t.text, tx + tw / 2, 9, { size: 10, align: 'center', color: '#fef3c7' });
+      const tw = Math.ceil(measure(t.text, 15, 'tx')) + 22;
+      const tx = Math.round(Math.max(HUD_W + 2, Math.min(W - tw - 2, (HUD_W + W) / 2 - tw / 2)));
+      frameBox('toast', tx, 1, tw, 17);
+      text(t.text, tx + 8, 10, { size: 15, font: 'tx' });
+      arrowDown(tx + tw - 11, 8);
       ctx.globalAlpha = 1;
     }
   }
@@ -825,6 +891,8 @@
     }
   }
   window.addEventListener('click', (e) => act(e.clientX, e.clientY, 'janela'));
+  // só leitura, pra diagnóstico/testes: o que está embaixo de um ponto da faixa
+  window.__taskmon = { hit: (x, y) => hitTest(x, y) };
   bridge.onPress((p) => act(p.x, p.y, 'windows'));
 
   // ---------- Comandos do painel ----------
@@ -860,6 +928,9 @@
         break;
       case 'catchMode':
         if (G.CATCH_MODES[cmd.value]) state.settings.catchMode = cmd.value;
+        break;
+      case 'palette':
+        if (A.PALETTES[cmd.value]) { state.settings.palette = cmd.value; A.setPalette(cmd.value); }
         break;
       case 'autoBuy':
         state.settings.autoBuy = !!cmd.value;
