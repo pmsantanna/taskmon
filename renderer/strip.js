@@ -78,7 +78,7 @@
   const sim = {
     phase: 'walk', t: 0, encounterAt: 3,
     wild: null, wildX: 0, wildAlpha: 1,
-    turnT: 0, queue: [], bl: null, bw: null, log: [], autoTries: 0, ppT: 0,
+    turnT: 0, queue: [], bl: null, bw: null, log: [], ppT: 0, defeated: false, catchTries: 0, prompt: null,
     lunge: null, floaters: [], capsule: null,
     toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
@@ -111,8 +111,8 @@
     const w = sim.wild;
     bridge.pushState({
       ...state,
-      battle: w && ['appear', 'fight', 'throw', 'shake'].includes(sim.phase)
-        ? { species: w.species, level: w.level, hp: w.hp, max: G.maxHp(w), shiny: w.shiny, gender: w.gender, status: w.status || null, moves: w.moves, log: sim.log, ask: asking(), answer: sim.answer, caught: !!state.dex.caught[w.species] }
+      battle: w && ['appear', 'fight', 'throw', 'shake', 'prompt', 'down', 'retry'].includes(sim.phase)
+        ? { species: w.species, level: w.level, hp: w.hp, max: G.maxHp(w), shiny: w.shiny, gender: w.gender, status: w.status || null, moves: w.moves, log: sim.log, ask: sim.phase === 'prompt' ? sim.prompt : null, defeated: !!sim.defeated, tries: sim.catchTries || 0, caps: (state.items.capsula || 0) + (state.items.super || 0), caught: !!state.dex.caught[w.species] }
         : null,
       resting: sim.phase === 'rest',
     });
@@ -137,8 +137,9 @@
     sim.wild = G.rollWild(state);
     sim.wildX = W + 4;
     sim.wildAlpha = 1;
-    sim.autoTries = 0;
-    sim.answer = null;
+    sim.defeated = false;
+    sim.catchTries = 0;
+    sim.prompt = null;
     sim.queue = [];
     sim.log = [`Um ${name(sim.wild)} selvagem nv ${sim.wild.level} apareceu!`];
     setPhase('appear');
@@ -258,14 +259,7 @@
 
   /** Executa a próxima ação da fila. Devolve o tempo até a próxima. */
   function nextAction() {
-    if (!sim.queue.length) {
-      if (shouldAutoCatch()) {
-        sim.autoTries++;
-        throwCapsule(pickCapsule(sim.wild));
-        return 0;
-      }
-      startRound();
-    }
+    if (!sim.queue.length) startRound();
     const act = sim.queue.shift();
     let events;
     if (act.end) {
@@ -290,9 +284,53 @@
     if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
     if (res.drop) toast(`O ${G.SPECIES[sim.wild.species].name} deixou cair: ${G.SHOP[res.drop].name}!`, 3);
     handleXpEvents(res.events, lead);
-    setPhase('win');
+    sim.defeated = true; // já ganhou XP; daqui pra frente é só a captura
+    sim.catchTries = 0;
+    log(`${name(sim.wild)} foi derrotado!`);
+    afterDefeat();
     save();
     sync();
+  }
+
+  // ---------- Captura depois de derrotar ----------
+  // Derrotado, o selvagem fica caído uns segundos. Conforme o modo: lança sozinho, pergunta
+  // ("Capturar?") ou espera um clique (manual). Se escapar da cápsula: tenta de novo (auto),
+  // pergunta "Tentar outra?" ou deixa ir. Depois de escapar ele ainda pode fugir.
+  const AUTO_TRIES = 3;
+  const PROMPT_S = 10; // sem resposta, deixa ir
+  const DOWN_S = 3;    // janela do modo manual pra clicar no caído
+
+  function afterDefeat() {
+    const w = sim.wild;
+    const mode = state.settings.catchMode;
+    if ((mode === 'all' || mode === 'new') && G.wantsCatch(state, w)) {
+      if (pickCapsule(w)) return autoThrow();
+      toast('Sem cápsulas pra capturar!');
+      return setPhase('win');
+    }
+    if (mode === 'ask') return openPrompt('catch');
+    setPhase('down'); // manual: clique no caído pra lançar
+  }
+
+  function autoThrow() {
+    const item = pickCapsule(sim.wild);
+    if (!item) { toast('Acabaram as cápsulas!'); setPhase('win'); return; }
+    sim.catchTries++;
+    throwCapsule(item);
+  }
+
+  function openPrompt(kind) {
+    sim.prompt = kind;
+    setPhase('prompt');
+    sync();
+  }
+
+  function answerCatch(yes) {
+    if (!sim.wild || sim.phase !== 'prompt') return;
+    sim.prompt = null;
+    if (!yes) { log(`Você deixou ${name(sim.wild)} ir.`); setPhase('win'); sync(); return; }
+    if (!pickCapsule(sim.wild)) { toast('Sem cápsulas! Compre no painel.'); setPhase('win'); sync(); return; }
+    autoThrow();
   }
 
   function handleXpEvents(events, c) {
@@ -329,28 +367,6 @@
     return null;
   }
 
-  function shouldAutoCatch() {
-    const w = sim.wild;
-    return G.wantsCatch(state, w, sim.answer)
-      && sim.autoTries < 3
-      && w.hp / G.maxHp(w) < 0.4
-      && !!pickCapsule(w);
-  }
-
-  // Modo "perguntar": a pergunta fica na faixa (e no painel) até responder ou a luta acabar.
-  const asking = () => state.settings.catchMode === 'ask' && sim.answer === null && sim.wild
-    && ['appear', 'fight'].includes(sim.phase) && sim.wild.hp > 0;
-
-  function answerCatch(yes) {
-    if (!sim.wild) return;
-    sim.answer = !!yes;
-    if (yes) {
-      toast(`Vou tentar capturar ${name(sim.wild)}!`);
-      log(`Você decidiu capturar ${name(sim.wild)}.`);
-    }
-    sync();
-  }
-
   function throwCapsule(item) {
     state.items[item]--;
     sim.capsule = { item, success: Math.random() < G.catchChance(sim.wild, item) };
@@ -361,15 +377,32 @@
   function finishCapture() {
     const w = sim.wild;
     if (sim.capsule.success) {
-      const res = G.rewardWin(state, w);
-      handleXpEvents(res.events, G.getLead(state));
-      if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
-      if (res.drop) toast(`Encontrou: ${G.SHOP[res.drop].name}!`, 3);
+      if (!sim.defeated) { // capturou no meio da luta (clique): ainda não tinha ganhado a XP
+        const res = G.rewardWin(state, w);
+        handleXpEvents(res.events, G.getLead(state));
+        if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
+        if (res.drop) toast(`Encontrou: ${G.SHOP[res.drop].name}!`, 3);
+      }
       G.addCaught(state, w);
       const where = state.box.includes(w) ? ' (foi pra caixa)' : '';
       toast(`Capturou ${name(w)}!${where}`, 3);
       if (w.held) toast(`${G.SPECIES[w.species].name} estava segurando ${G.HELD[w.held].name}!`, 3);
       setPhase('caught');
+    } else if (sim.defeated) {
+      log(`${name(w)} escapou da cápsula!`);
+      floater('Escapou!', wildTargetX + S / 2, groundY - S - 4, '#fca5a5', 1.2, 10);
+      // depois de escapar, às vezes foge de vez
+      if (Math.random() < (G.SPECIES[w.species].legendary ? 0.25 : 0.1)) {
+        toast(`${name(w)} fugiu!`, 3);
+        log(`${name(w)} fugiu!`);
+        setPhase('win');
+      } else {
+        const mode = state.settings.catchMode;
+        const auto = mode === 'all' || mode === 'new';
+        if (auto && sim.catchTries < AUTO_TRIES && pickCapsule(w)) setPhase('retry');
+        else if (auto) { toast(`${name(w)} escapou, desisti depois de ${sim.catchTries} tentativa(s)`, 3); setPhase('win'); }
+        else openPrompt('retry');
+      }
     } else {
       toast('Escapou!');
       log(`${name(w)} escapou da cápsula!`);
@@ -457,6 +490,18 @@
 
       case 'caught':
         if (sim.t >= 1) endBattle();
+        break;
+
+      case 'prompt':
+        if (sim.t >= PROMPT_S) { sim.prompt = null; log(`${name(sim.wild)} foi embora.`); setPhase('win'); sync(); }
+        break;
+
+      case 'down':
+        if (sim.t >= DOWN_S) setPhase('win');
+        break;
+
+      case 'retry': // pausa curtinha antes de lançar de novo
+        if (sim.t >= 0.8) autoThrow();
         break;
 
       case 'rest':
@@ -633,8 +678,12 @@
     if (w && sim.phase !== 'shake' && sim.phase !== 'caught') {
       const wx = sim.wildX - lungeOffset('wild');
       drawGlow('wild', wx, y);
-      sprite(w.species, w.shiny, wx, y, { flip: true, alpha: sim.wildAlpha * blinkAlpha('wild') });
-      if (['appear', 'fight', 'throw'].includes(sim.phase)) {
+      // derrotado: fica caído e meio apagado esperando a captura
+      sprite(w.species, w.shiny, wx, y, { flip: true, alpha: (sim.defeated ? 0.5 : 1) * sim.wildAlpha * blinkAlpha('wild'), t: sim.defeated ? 0 : sim.anim });
+      if (sim.defeated && ['prompt', 'down', 'retry'].includes(sim.phase)) {
+        text(sim.phase === 'down' ? 'clique pra capturar' : 'derrotado', wx + S / 2, y - 6, { size: 8, align: 'center', color: '#d6d3d1' });
+      }
+      if (!sim.defeated && ['appear', 'fight', 'throw'].includes(sim.phase)) {
         const max = G.maxHp(w);
         const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''} ${w.level}`;
         text(label, wx + S / 2, y - 12, { size: 9, align: 'center', color: w.shiny ? '#fde047' : '#e7e5e4' });
@@ -667,9 +716,13 @@
 
     // pergunta de captura (no lugar dos avisos enquanto espera resposta)
     sim.askRects = null;
-    if (asking()) {
+    if (sim.phase === 'prompt' && sim.wild) {
       const w2 = sim.wild;
-      const q = `Capturar ${G.SPECIES[w2.species].name}${w2.gender ? (w2.gender === 'F' ? '♀' : '♂') : ''}${state.dex.caught[w2.species] ? '' : ' (novo!)'}?`;
+      const nm = `${G.SPECIES[w2.species].name}${w2.gender ? (w2.gender === 'F' ? '♀' : '♂') : ''}`;
+      const left = Math.max(0, Math.ceil(PROMPT_S - sim.t));
+      const q = sim.prompt === 'retry'
+        ? `Escapou! Tentar outra? (${left}s)`
+        : `Capturar ${nm}${state.dex.caught[w2.species] ? '' : ' (novo!)'}? (${left}s)`;
       ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
       const qw = ctx.measureText(q).width;
       const bw = 30, gap = 4, total = qw + 14 + (bw + gap) * 2;
@@ -709,7 +762,7 @@
     const top = groundY - S;
     if (x < HUD_W) return 'hud';
     if (x >= leadX && x <= leadX + S && y >= top) return 'lead';
-    if (sim.wild && sim.phase === 'fight' && x >= sim.wildX && x <= sim.wildX + S && y >= top - 14) return 'wild';
+    if (sim.wild && ['fight', 'down'].includes(sim.phase) && x >= sim.wildX && x <= sim.wildX + S && y >= top - 14) return 'wild';
     return null;
   }
 
@@ -734,8 +787,9 @@
     if (hit === 'askNo') answerCatch(false);
     if (hit === 'wild') {
       const item = pickCapsule(sim.wild);
-      if (item) throwCapsule(item);
-      else toast('Sem cápsulas! Compre no painel.');
+      if (!item) toast('Sem cápsulas! Compre no painel.');
+      else if (sim.phase === 'down') autoThrow();
+      else throwCapsule(item);
     }
   });
 

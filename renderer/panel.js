@@ -274,19 +274,26 @@
     const lines = b && b.log ? b.log.slice(-3) : [];
     logEl.innerHTML = lines.map((l) => `<div>${esc(l)}</div>`).join('');
     logEl.hidden = !lines.length;
+    const wildEl = hero.querySelector('.stage .wild');
+    if (wildEl) wildEl.classList.toggle('down', !!(b && b.defeated));
     const askEl = $('h-ask');
     if (b && b.ask) {
-      const key = `${b.species}${b.level}${b.gender}`;
+      const key = `${b.ask}${b.species}${b.level}${b.gender}${b.tries}${b.caps}`;
       if (askEl.dataset.k !== key) {
         askEl.dataset.k = key;
-        askEl.innerHTML = `<span>Capturar <b>${esc(G.SPECIES[b.species].name)}</b>${b.gender ? (b.gender === 'F' ? ' ♀' : ' ♂') : ''} nv ${b.level}${b.caught ? '' : ' <span class="tag">NOVO</span>'}${b.shiny ? ' ✨' : ''}?</span>
-          <button class="btn primary" data-cmd="catchYes">Capturar</button><button class="btn" data-cmd="catchNo">Não</button>`;
+        const who = `<b>${esc(G.SPECIES[b.species].name)}</b>${b.gender ? (b.gender === 'F' ? ' ♀' : ' ♂') : ''} nv ${b.level}${b.caught ? '' : ' <span class="tag">NOVO</span>'}${b.shiny ? ' ✨' : ''}`;
+        const q = b.ask === 'retry'
+          ? `${who} escapou da cápsula! Tentar outra? <span class="muted">(${b.caps} restante(s))</span>`
+          : `${who} foi derrotado. Capturar? <span class="muted">(${b.caps} cápsula(s))</span>`;
+        askEl.innerHTML = `<span>${q}</span>
+          <button class="btn primary" data-cmd="catchYes" ${b.caps ? '' : 'disabled'}>${b.ask === 'retry' ? 'Tentar outra' : 'Capturar'}</button><button class="btn" data-cmd="catchNo">${b.ask === 'retry' ? 'Deixar ir' : 'Não'}</button>`;
       }
       askEl.hidden = false;
     } else { askEl.hidden = true; askEl.dataset.k = ''; }
     const st = $('h-status');
     if (state.resting) st.innerHTML = '<b>Descansando…</b> recupera o HP em alguns segundos.';
-    else if (b) st.innerHTML = `Batalhando contra <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>. Clique nele na barra pra lançar uma cápsula!`;
+    else if (b && b.defeated) st.innerHTML = `Derrotou <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>${b.tries ? ` · ${b.tries} cápsula(s) lançada(s)` : ''}.`;
+    else if (b) st.innerHTML = `Batalhando contra <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>. Derrote pra capturar (ou clique nele na barra pra arriscar antes).`;
     else st.innerHTML = `Explorando <b>${esc(zoneOf(state.zone).name)}</b>…`;
     // PP do líder mudam a cada golpe: atualiza os chips sem redesenhar tudo
     document.querySelectorAll(`[data-pp-of="${lead.uid}"]`).forEach((el) => {

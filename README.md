@@ -36,9 +36,12 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 
 - **Clique no HUD ou no seu bicho** pra abrir o painel (equipe, caixa, zonas, loja e bestiário).
 - **Clique no selvagem** durante a luta pra lançar uma cápsula. Quanto menos HP ele tiver, maior a chance.
-- **Captura** (⚙ Ajustes): *espécies novas e brilhantes* (padrão), *capturar todos*, *perguntar a cada encontro*
-  (aparece "Capturar X? Sim/Não" na faixa e no painel) ou *só manual*. Com captura, o líder enfraquece o
-  selvagem e lança abaixo de 40% do HP. Dá pra ligar a compra automática de cápsulas.
+- **Captura** acontece **depois de derrotar** o selvagem (ele fica caído uns segundos). Modos (⚙ Ajustes):
+  *espécies novas e brilhantes* (padrão) e *capturar todos* lançam sozinhos e tentam até 3 vezes;
+  *perguntar* mostra "Capturar X?" na faixa e no painel; *só manual* espera você clicar no caído.
+  Se ele **escapar da cápsula**, pode fugir de vez (10%, lendário 25%) ou aparece "Tentar outra?".
+  Clicar no selvagem no meio da luta ainda arrisca uma cápsula antes (chance menor com HP alto).
+  Dá pra ligar a compra automática de cápsulas.
 - **Soltar** (aba Caixa): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
   selecione (clicando nos cartões ou "Selecionar filtrados") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.

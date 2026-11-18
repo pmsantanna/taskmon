@@ -892,8 +892,8 @@
   const CATCH_MODES = {
     new: 'Espécies novas e brilhantes',
     all: 'Capturar todos',
-    ask: 'Perguntar a cada encontro',
-    off: 'Só manual (clicando no selvagem)',
+    ask: 'Perguntar depois de derrotar',
+    off: 'Só manual (clicar no derrotado)',
   };
 
   /** Settings de saves antigos (autoCatch booleano) viram catchMode. */
@@ -906,13 +906,12 @@
     return st;
   }
 
-  /** O modo de captura quer tentar pegar esse selvagem? (no 'ask', depende da resposta) */
-  function wantsCatch(state, wild, answer = null) {
+  /** Os modos automáticos querem capturar esse selvagem depois de derrotado? */
+  function wantsCatch(state, wild) {
     switch (ensureSettings(state).catchMode) {
       case 'all': return true;
       case 'new': return !state.dex.caught[wild.species] || wild.shiny;
-      case 'ask': return answer === true;
-      default: return false;
+      default: return false; // 'ask' e 'off' decidem na hora (pergunta / clique)
     }
   }
 
