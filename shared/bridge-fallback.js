@@ -52,6 +52,7 @@
     onRelayout: () => {},
     onCursor: () => {},
     onDebug: () => {},
+    onPress: () => {},
     loadAssets,
     onAssetsChanged: (cb) => listeners.assets.push(cb),
     openSpritesFolder: () => alert('No navegador, coloque os PNGs em assets/sprites/ e recarregue.'),

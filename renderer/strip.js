@@ -719,7 +719,7 @@
       const hit = cursor ? hitTest(cursor.x, cursor.y) : null;
       const lines = [
         `mouse ${cursor ? `${Math.round(cursor.x)},${Math.round(cursor.y)}` : '—'} ${hit || '-'} · ${clickThrough ? 'atravessa' : 'PEGA'} · dpr ${dpr}`,
-        `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · janela ${debug.b ? `${debug.b.width}×${debug.b.height}` : ''} · clique ${debug.lastClick || '—'}`,
+        `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · botão ${debug.reader ? 'lido' : 'SEM leitor'} · clique ${debug.lastClick || '—'}`,
       ];
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillRect(HUD_W, H - 22, W - HUD_W, 22);
@@ -804,9 +804,16 @@
   let debug = null;
   bridge.onDebug((d) => { debug = d; });
 
-  window.addEventListener('click', (e) => {
-    const hit = hitTest(e.clientX, e.clientY);
-    if (debug) debug.lastClick = `${Math.round(e.clientX)},${Math.round(e.clientY)} ${hit || '-'}`;
+  // O mesmo clique pode chegar duas vezes: pelo main (botão lido do Windows) e pela janela.
+  // Só o primeiro vale.
+  let lastAction = 0;
+  function act(x, y, source) {
+    const hit = hitTest(x, y);
+    if (debug) debug.lastClick = `${Math.round(x)},${Math.round(y)} ${hit || '-'} (${source})`;
+    if (!hit) return;
+    const now = performance.now();
+    if (now - lastAction < 400) return;
+    lastAction = now;
     if (hit === 'hud' || hit === 'lead') bridge.openPanel();
     if (hit === 'askYes') answerCatch(true);
     if (hit === 'askNo') answerCatch(false);
@@ -816,7 +823,9 @@
       else if (sim.phase === 'down') autoThrow();
       else throwCapsule(item);
     }
-  });
+  }
+  window.addEventListener('click', (e) => act(e.clientX, e.clientY, 'janela'));
+  bridge.onPress((p) => act(p.x, p.y, 'windows'));
 
   // ---------- Comandos do painel ----------
   bridge.onCommand((cmd) => {

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('bridge', {
   onStateRequest: (cb) => ipcRenderer.on('state:request', () => cb()),
   onRelayout: (cb) => ipcRenderer.on('strip:relayout', () => cb()),
   onCursor: (cb) => ipcRenderer.on('strip:cursor', (_e, p) => cb(p)),
+  onPress: (cb) => ipcRenderer.on('strip:press', (_e, p) => cb(p)),
   onDebug: (cb) => ipcRenderer.on('strip:debug', (_e, d) => cb(d)),
   // sprites customizados
   loadAssets: () => ipcRenderer.invoke('assets:load'),

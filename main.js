@@ -152,13 +152,38 @@ function createStrip() {
   strip.on('minimize', () => { strip.restore(); reassertTop(); });
 
   setInterval(watchdog, 750);
-  setInterval(trackCursor, 100);
+  setInterval(trackCursor, 30);
 }
 
 // Avisa a faixa quando o cursor SAI dela (a posição exata vem do mousemove da própria página;
 // a do sistema pode vir deslocada com escala de DPI). Com o diagnóstico ligado, manda os números.
+// ---------- Clique em cima da barra de tarefas ----------
+// Em cima da barra, o Windows entrega o clique pra barra mesmo com a faixa aceitando o mouse
+// (ela se coloca na frente das janelas sempre no topo). Então, enquanto o cursor está em cima
+// da faixa, lemos o botão esquerdo direto do Windows (GetAsyncKeyState: só o estado do botão,
+// sem hook e sem teclado) e avisamos a faixa do ponto apertado. Fora do Windows, ou sem o koffi,
+// fica só o clique normal da janela.
+const mouseButton = (() => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const koffi = require('koffi');
+    const user32 = koffi.load('user32.dll');
+    const GetAsyncKeyState = user32.func('short __stdcall GetAsyncKeyState(int vKey)');
+    const VK_LBUTTON = 0x01;
+    return () => {
+      const st = GetAsyncKeyState(VK_LBUTTON);
+      return { down: (st & 0x8000) !== 0, pressedSince: (st & 0x0001) !== 0 };
+    };
+  } catch (err) {
+    console.warn('Sem leitura do botão do mouse (koffi):', err.message);
+    return null;
+  }
+})();
+
 let cursorInside = false;
 let stripGrabbing = false; // a faixa está aceitando clique (mouse em cima de algo clicável)
+let wasDown = false;
+let lastPress = null;
 function trackCursor() {
   if (!alive(strip)) return;
   const p = screen.getCursorScreenPoint();
@@ -166,11 +191,18 @@ function trackCursor() {
   const inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
   if (!inside && cursorInside) strip.webContents.send('strip:cursor', null);
   cursorInside = inside;
-  // Com o mouse em cima da faixa, a barra de tarefas (embaixo) recebe o movimento enquanto a
-  // faixa deixa o clique passar e se coloca na frente. Reafirma o topo a cada 100 ms nesse período.
-  // moveTop não pisca (diferente de desligar/religar o sempre-no-topo, que o watchdog faz).
-  if (inside || stripGrabbing) strip.moveTop();
-  if (config.debugMouse) strip.webContents.send('strip:debug', { on: true, pt: p, b, scale: targetDisplay().scaleFactor });
+  if (mouseButton) {
+    const st = mouseButton(); // lê sempre, pra zerar o "apertou desde a última leitura"
+    const pressed = (st.down && !wasDown) || (st.pressedSince && !st.down && !wasDown);
+    wasDown = st.down;
+    if (inside && pressed) {
+      lastPress = { x: p.x - b.x, y: p.y - b.y };
+      strip.webContents.send('strip:press', lastPress);
+    }
+  }
+  if (config.debugMouse) {
+    strip.webContents.send('strip:debug', { on: true, pt: p, b, scale: targetDisplay().scaleFactor, reader: !!mouseButton, press: lastPress });
+  }
 }
 
 function panelBounds() {
@@ -345,9 +377,6 @@ ipcMain.on('save:write', (_e, data) => {
 ipcMain.on('strip:clickthrough', (_e, ignore) => {
   if (!alive(strip)) return;
   strip.setIgnoreMouseEvents(ignore, { forward: true });
-  // Vai aceitar clique: garante que está na frente da barra de tarefas AGORA (ela se coloca
-  // na frente quando recebe o mouse, e o clique iria pra ela).
-  if (!ignore) strip.moveTop();
   stripGrabbing = !ignore;
 });
 ipcMain.on('panel:open', showPanel);

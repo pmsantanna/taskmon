@@ -13,6 +13,10 @@ npm install
 npm start
 ```
 
+O `koffi` (dependência) lê o botão do mouse direto do Windows: em cima da barra de tarefas o
+clique vai pra barra, então é assim que a faixa sabe que foi clicada. Ele já vem compilado no
+pacote do npm, sem baixar nada do GitHub. Se faltar, a faixa só responde no modo "acima da barra".
+
 ### Atrás do proxy da empresa
 
 O `npm install` do Electron baixa um binário do GitHub, e o proxy corporativo costuma

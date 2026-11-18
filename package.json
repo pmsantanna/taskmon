@@ -15,7 +15,21 @@
   "build": {
     "appId": "dev.pedro.taskmon",
     "productName": "Taskmon",
-    "files": ["main.js", "preload.js", "renderer/**", "shared/**", "assets/**"],
-    "win": { "icon": "assets/icon.png" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "shared/**",
+      "assets/**"
+    ],
+    "win": {
+      "icon": "assets/icon.png"
+    },
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ]
+  },
+  "dependencies": {
+    "koffi": "^2.9.0"
   }
 }
