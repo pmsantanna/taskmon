@@ -70,6 +70,7 @@
   let state = saved && saved.version === 1 ? { ...G.newGame(), ...saved } : G.newGame();
   // saves antigos não tinham golpes
   G.ensureBreeding(state);
+  G.ensureSettings(state);
   [...state.team, ...state.box, ...state.daycare.mons].forEach((c) => G.ensureMoves(c));
   await A.load();
   layout();
@@ -111,7 +112,7 @@
     bridge.pushState({
       ...state,
       battle: w && ['appear', 'fight', 'throw', 'shake'].includes(sim.phase)
-        ? { species: w.species, level: w.level, hp: w.hp, max: G.maxHp(w), shiny: w.shiny, status: w.status || null, moves: w.moves, log: sim.log }
+        ? { species: w.species, level: w.level, hp: w.hp, max: G.maxHp(w), shiny: w.shiny, gender: w.gender, status: w.status || null, moves: w.moves, log: sim.log, ask: asking(), answer: sim.answer, caught: !!state.dex.caught[w.species] }
         : null,
       resting: sim.phase === 'rest',
     });
@@ -137,6 +138,7 @@
     sim.wildX = W + 4;
     sim.wildAlpha = 1;
     sim.autoTries = 0;
+    sim.answer = null;
     sim.queue = [];
     sim.log = [`Um ${name(sim.wild)} selvagem nv ${sim.wild.level} apareceu!`];
     setPhase('appear');
@@ -318,6 +320,8 @@
   }
 
   function pickCapsule(wild) {
+    const bought = G.autoBuyCapsules(state);
+    if (bought) toast(`Comprou ${bought} cápsulas sozinho`);
     const rare = G.SPECIES[wild.species].catch < 0.15;
     if (rare && state.items.super > 0) return 'super';
     if (state.items.capsula > 0) return 'capsula';
@@ -327,11 +331,24 @@
 
   function shouldAutoCatch() {
     const w = sim.wild;
-    return state.settings.autoCatch
-      && sim.autoTries < 2
-      && pickCapsule(w)
+    return G.wantsCatch(state, w, sim.answer)
+      && sim.autoTries < 3
       && w.hp / G.maxHp(w) < 0.4
-      && (!state.dex.caught[w.species] || w.shiny);
+      && !!pickCapsule(w);
+  }
+
+  // Modo "perguntar": a pergunta fica na faixa (e no painel) até responder ou a luta acabar.
+  const asking = () => state.settings.catchMode === 'ask' && sim.answer === null && sim.wild
+    && ['appear', 'fight'].includes(sim.phase) && sim.wild.hp > 0;
+
+  function answerCatch(yes) {
+    if (!sim.wild) return;
+    sim.answer = !!yes;
+    if (yes) {
+      toast(`Vou tentar capturar ${name(sim.wild)}!`);
+      log(`Você decidiu capturar ${name(sim.wild)}.`);
+    }
+    sync();
   }
 
   function throwCapsule(item) {
@@ -648,8 +665,24 @@
 
     drawHud(lead);
 
-    // aviso
-    if (sim.toast) {
+    // pergunta de captura (no lugar dos avisos enquanto espera resposta)
+    sim.askRects = null;
+    if (asking()) {
+      const w2 = sim.wild;
+      const q = `Capturar ${G.SPECIES[w2.species].name}${w2.gender ? (w2.gender === 'F' ? '♀' : '♂') : ''}${state.dex.caught[w2.species] ? '' : ' (novo!)'}?`;
+      ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
+      const qw = ctx.measureText(q).width;
+      const bw = 30, gap = 4, total = qw + 14 + (bw + gap) * 2;
+      const qx = Math.max(HUD_W + 4, Math.min(W - total - 4, (HUD_W + W) / 2 - total / 2));
+      frameBox('toast', qx, 2, total, 15, 7, 'rgba(12,10,9,0.9)');
+      text(q, qx + 7 + qw / 2, 9.5, { size: 10, align: 'center', color: '#fef3c7' });
+      const yesX = qx + qw + 14, noX = yesX + bw + gap;
+      roundRect(yesX, 4, bw, 11, 5, '#0f766e');
+      text('Sim', yesX + bw / 2, 9.5, { size: 9, align: 'center' });
+      roundRect(noX, 4, bw, 11, 5, '#44403c');
+      text('Não', noX + bw / 2, 9.5, { size: 9, align: 'center' });
+      sim.askRects = { yes: [yesX, 2, bw, 15], no: [noX, 2, bw, 15] };
+    } else if (sim.toast) {
       const t = sim.toast;
       const a = Math.min(1, t.t / 0.2, (t.seconds - t.t) / 0.3);
       ctx.globalAlpha = Math.max(0, a);
@@ -669,6 +702,10 @@
 
   function hitTest(x, y) {
     if (!state.starterChosen) return 'hud';
+    const r = sim.askRects;
+    const inR = (q) => q && x >= q[0] && x <= q[0] + q[2] && y >= q[1] && y <= q[1] + q[3];
+    if (r && inR(r.yes)) return 'askYes';
+    if (r && inR(r.no)) return 'askNo';
     const top = groundY - S;
     if (x < HUD_W) return 'hud';
     if (x >= leadX && x <= leadX + S && y >= top) return 'lead';
@@ -693,6 +730,8 @@
   window.addEventListener('click', (e) => {
     const hit = hitTest(e.clientX, e.clientY);
     if (hit === 'hud' || hit === 'lead') bridge.openPanel();
+    if (hit === 'askYes') answerCatch(true);
+    if (hit === 'askNo') answerCatch(false);
     if (hit === 'wild') {
       const item = pickCapsule(sim.wild);
       if (item) throwCapsule(item);
@@ -731,8 +770,25 @@
         if (G.buy(state, cmd.item, cmd.qty)) toast(`Comprou ${cmd.qty}× ${(G.SHOP[cmd.item] || G.HELD[cmd.item]).name}`);
         else toast('Moedas insuficientes');
         break;
-      case 'autoCatch':
-        state.settings.autoCatch = !!cmd.value;
+      case 'catchMode':
+        if (G.CATCH_MODES[cmd.value]) state.settings.catchMode = cmd.value;
+        break;
+      case 'autoBuy':
+        state.settings.autoBuy = !!cmd.value;
+        break;
+      case 'catchAnswer':
+        answerCatch(cmd.yes);
+        break;
+      case 'release': {
+        const r = G.releaseCreatures(state, cmd.uids || []);
+        if (r.count) {
+          const items = Object.entries(r.items).map(([id, n]) => `${n}× ${G.SHOP[id].name}`).join(', ');
+          toast(`Soltou ${r.count}: +${r.coins} 🪙${items ? ` e ${items}` : ''}`, 4);
+        }
+        break;
+      }
+      case 'lock':
+        G.toggleLock(state, cmd.uid);
         break;
       case 'buyTm':
         if (G.buyTm(state, cmd.tm)) toast(`Comprou a ${cmd.tm.toUpperCase()}: ${G.MOVES[G.TMS[cmd.tm].move].name}`);

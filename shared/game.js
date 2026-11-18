@@ -628,7 +628,8 @@
       eggs: [],
       zone: 'campina',
       dex: { seen: {}, caught: {} },
-      settings: { autoCatch: true, autoMoves: true },
+      // catchMode: 'new' = espécies novas e brilhantes | 'all' = todos | 'ask' = pergunta | 'off' = só manual
+      settings: { catchMode: 'new', autoBuy: false, autoMoves: true },
       stats: { battles: 0, wins: 0, caught: 0 },
       lastSaved: Date.now(),
     };
@@ -887,6 +888,98 @@
     return true;
   }
 
+  // ---------- Captura automática ----------
+  const CATCH_MODES = {
+    new: 'Espécies novas e brilhantes',
+    all: 'Capturar todos',
+    ask: 'Perguntar a cada encontro',
+    off: 'Só manual (clicando no selvagem)',
+  };
+
+  /** Settings de saves antigos (autoCatch booleano) viram catchMode. */
+  function ensureSettings(state) {
+    const st = state.settings || (state.settings = {});
+    if (!CATCH_MODES[st.catchMode]) st.catchMode = st.autoCatch === false ? 'off' : 'new';
+    delete st.autoCatch;
+    if (st.autoBuy === undefined) st.autoBuy = false;
+    if (st.autoMoves === undefined) st.autoMoves = true;
+    return st;
+  }
+
+  /** O modo de captura quer tentar pegar esse selvagem? (no 'ask', depende da resposta) */
+  function wantsCatch(state, wild, answer = null) {
+    switch (ensureSettings(state).catchMode) {
+      case 'all': return true;
+      case 'new': return !state.dex.caught[wild.species] || wild.shiny;
+      case 'ask': return answer === true;
+      default: return false;
+    }
+  }
+
+  /** Sem cápsula e com compra automática ligada: compra 5 (ou o que der). Devolve quantas comprou. */
+  function autoBuyCapsules(state) {
+    if (!state.settings.autoBuy || (state.items.capsula || 0) > 0 || (state.items.super || 0) > 0) return 0;
+    const qty = Math.min(5, Math.floor(state.coins / SHOP.capsula.price));
+    if (qty > 0) buy(state, 'capsula', qty);
+    return qty;
+  }
+
+  // ---------- Soltar (liberar) ----------
+  /** IV total em % (0–100). */
+  const ivPercent = (c) => Math.round((STAT_KEYS.reduce((t, k) => t + (c.ivs?.[k] || 0), 0) / (31 * 6)) * 100);
+  const perfectIvs = (c) => STAT_KEYS.filter((k) => (c.ivs?.[k] || 0) >= 31).length;
+
+  /**
+   * Filtro da caixa. f = { species, nature, natureNot, maxIv, minIv, shiny: 'any'|'only'|'no', gender }
+   * (campos vazios = qualquer).
+   */
+  function matchesFilter(c, f = {}) {
+    if (f.species && c.species !== f.species) return false;
+    if (f.nature) {
+      const neutral = !NATURES[c.nature]?.up;
+      const hit = f.nature === '_neutral' ? neutral : c.nature === f.nature;
+      if (f.natureNot ? hit : !hit) return false;
+    }
+    const iv = ivPercent(c);
+    if (f.maxIv != null && f.maxIv !== '' && iv > Number(f.maxIv)) return false;
+    if (f.minIv != null && f.minIv !== '' && iv < Number(f.minIv)) return false;
+    if (f.shiny === 'only' && !c.shiny) return false;
+    if (f.shiny === 'no' && c.shiny) return false;
+    if (f.gender && c.gender !== f.gender) return false;
+    return true;
+  }
+
+  /**
+   * Solta criaturas da caixa (equipe e trancadas 🔒 nunca). Como no Legends: Arceus, soltar dá
+   * itens de esforço; aqui também algumas moedas. O item segurado volta pra mochila.
+   */
+  function releaseCreatures(state, uids, rng = Math.random) {
+    const set = new Set(uids);
+    const out = { count: 0, coins: 0, items: {} };
+    state.box = state.box.filter((c) => {
+      if (!set.has(c.uid) || c.locked) return true;
+      out.count++;
+      out.coins += c.level * 2;
+      if (c.held) state.items[c.held] = (state.items[c.held] || 0) + 1;
+      if (rng() < 0.3) {
+        const id = c.level >= 30 ? 'esforco3' : c.level >= 15 ? 'esforco2' : 'esforco1';
+        out.items[id] = (out.items[id] || 0) + 1;
+        state.items[id] = (state.items[id] || 0) + 1;
+      }
+      return false;
+    });
+    state.coins += out.coins;
+    state.stats.released = (state.stats.released || 0) + out.count;
+    return out;
+  }
+
+  function toggleLock(state, cUid) {
+    const c = [...state.team, ...state.box].find((x) => x.uid === cUid);
+    if (!c) return false;
+    c.locked = !c.locked;
+    return true;
+  }
+
   /** Dá um item pra criatura segurar (null = tirar). O item anterior volta pra mochila. */
   function hold(state, c, item) {
     if (item && (!HELD[item] || !(state.items[item] > 0))) return false;
@@ -940,6 +1033,7 @@
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
+    CATCH_MODES, ensureSettings, wantsCatch, autoBuyCapsules, ivPercent, perfectIvs, matchesFilter, releaseCreatures, toggleLock,
     DAYCARE_MAX, EGGS_MAX, EGG_CHECK_S, rollGender, baseSpecies, breedChance, breedMood, hatchTime, makeEgg,
     hatchEgg, ensureBreeding, tickBreeding, daycarePut, daycareTake,
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
