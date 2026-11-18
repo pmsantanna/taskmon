@@ -42,6 +42,8 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
 - **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. Na aba Equipe, o botão **Golpes**
   troca os ativos; clique em qualquer golpe pra abrir os detalhes.
+- **Creche e ovos**: deixe um casal na aba **Creche**; os ovos chocam sozinhos com o tempo.
+- **Ajustes**: engrenagem ⚙ no topo do painel.
 - **MTs**: aba própria no painel. Compre na loja ou ache as exclusivas em batalha e ensine pra quem for compatível.
 - Brilhantes: 1 em 256. Lendário escondido no Vulcão. 👀
 
@@ -74,6 +76,16 @@ e/ou espécie quem pode aprender. Ao ensinar com 4 golpes, você escolhe qual es
 
 Golpes de MT com mecânica própria: **Proteger** (bloqueia o turno; repetido falha cada vez mais),
 **Descanso** (HP cheio e dorme 2 turnos) e **Hiper-Raio** (perde o turno seguinte recarregando).
+
+### Sexo, creche e ovos
+
+- Cada espécie tem uma proporção de fêmeas: iniciais 12,5% (como no original), a maioria 50%, Boitatá sem sexo.
+- Na **creche** (2 vagas), um macho e uma fêmea que compartilham um **grupo de ovo** (Campo, Água, Planta,
+  Inseto, Mineral, Voador) tentam fazer um ovo a cada 60 s de jogo: 50% se são da mesma linhagem, 25% se não.
+- O filhote é da **forma base da mãe**, nasce no nível 1, herda **3 IVs** sorteados dos pais (5 se um deles
+  segura o **Laço do Destino**) e a **natureza** de quem segura a **Pedra Eterna**. Brilhante: 1 em 256.
+- Até 4 ovos chocando ao mesmo tempo, de 5 a 20 min de jogo conforme a raridade (contam também com o app fechado).
+- Sprite do ovo: `creatures/_egg.png` na pasta de sprites.
 
 ### IVs e níveis de esforço (como no Legends: Arceus)
 

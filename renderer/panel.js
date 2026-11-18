@@ -19,11 +19,12 @@
   const TABS = [
     { id: 'team', label: 'Equipe' },
     { id: 'box', label: 'Caixa' },
+    { id: 'daycare', label: 'Creche' },
     { id: 'zones', label: 'Zonas' },
     { id: 'shop', label: 'Loja' },
     { id: 'tms', label: 'MTs' },
     { id: 'dex', label: 'Bestiário' },
-    { id: 'settings', label: 'Ajustes' },
+
   ];
   let tab = 'team';
   try { tab = localStorage.getItem('taskmon-tab') || 'team'; } catch { /* sem storage */ }
@@ -31,6 +32,7 @@
   const send = (cmd) => bridge.sendCommand(cmd);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const zoneOf = (id) => G.ZONES.find((z) => z.id === id) || G.ZONES[0];
+  const genderIcon = (c) => (c.gender ? `<span class="g ${c.gender === 'F' ? 'f' : 'm'}">${c.gender === 'F' ? '♀' : '♂'}</span>` : '');
   const nameOf = (c) => G.SPECIES[c.species].name + (c.shiny ? ' ✨' : '');
 
   // ---------- Sprites em HTML ----------
@@ -246,7 +248,7 @@
               <div class="wild"><small id="h-wild"></small>${spr(b.species, { size: 64, shiny: b.shiny, flip: true })}</div>` : '<span></span>'}
           </div>
           <div class="info">
-            <div class="row1"><b>${esc(nameOf(lead))}</b><span class="lv" id="h-lv"></span>${typeBadge(sp.type)}<span id="h-st"></span><span class="grow"></span><span class="nums" id="h-nums"></span></div>
+            <div class="row1"><b>${esc(nameOf(lead))} ${genderIcon(lead)}</b><span class="lv" id="h-lv"></span>${typeBadge(sp.type)}<span id="h-st"></span><span class="grow"></span><span class="nums" id="h-nums"></span></div>
             <div class="bars"><div class="bar"><i id="h-hp"></i></div><div class="bar"><i id="h-xp" style="background:var(--xp)"></i></div></div>
             <div class="status" id="h-status"></div>
             <div class="log" id="h-log"></div>
@@ -297,7 +299,7 @@
       <div class="mon ${isLead ? 'lead' : ''}">
         <div class="portrait">${spr(c.species, { shiny: c.shiny, size: 48 })}</div>
         <div>
-          <div class="nm">${esc(nameOf(c))} ${isLead ? '<span class="tag">LÍDER</span>' : ''} ${statusBadge(c.status)}</div>
+          <div class="nm">${esc(nameOf(c))} ${genderIcon(c)} ${isLead ? '<span class="tag">LÍDER</span>' : ''} ${statusBadge(c.status)}</div>
           <div class="sub">Nv ${c.level} ${typeBadge(sp.type)} <span>${evo}</span></div>
           <div class="bars">${bar(c.hp / max, 'var(--hp)')}${bar(c.xp / need, 'var(--xp)')}</div>
           <div class="nums">HP ${Math.round(c.hp)}/${max} · XP ${c.xp}/${need}</div>
@@ -328,11 +330,59 @@
         ${state.box.map((c) => `
           <div class="box-item">
             ${spr(c.species, { shiny: c.shiny, size: 48 })}
-            <span class="nm">${esc(nameOf(c))}</span>
+            <span class="nm">${esc(nameOf(c))} ${genderIcon(c)}</span>
             <span class="muted">Nv ${c.level} · ${G.TYPE_LABEL[G.SPECIES[c.species].type]}</span>
             <button class="btn" data-cmd="toTeam" data-uid="${c.uid}" ${full ? 'disabled title="Equipe cheia"' : ''}>→ Equipe</button>
           </div>`).join('')}
       </div></div>`;
+    },
+
+    daycare() {
+      const dc = state.daycare || { mons: [] };
+      const eggs = state.eggs || [];
+      const [a, b] = dc.mons;
+      const chance = G.breedChance(a, b);
+      const slot = (c) => c ? `
+        <div class="dc-slot">
+          ${spr(c.species, { shiny: c.shiny, size: 56 })}
+          <b>${esc(nameOf(c))} ${genderIcon(c)}</b>
+          <span class="muted">nv ${c.level}${c.held ? ` · ${esc(G.HELD[c.held].name)}` : ''}</span>
+          <button class="btn" data-cmd="daycareTake" data-uid="${c.uid}">Buscar</button>
+        </div>` : '<div class="dc-slot empty"><span class="muted">Vaga livre</span></div>';
+      const mood = dc.mons.length < 2 ? 'Deixe dois bichos de sexos opostos e do mesmo grupo de ovo.' : G.breedMood(chance);
+      const pick = [...state.team, ...state.box];
+      const full = dc.mons.length >= G.DAYCARE_MAX;
+      return `
+        <div class="card"><h2>Creche <span>${dc.mons.length}/${G.DAYCARE_MAX}</span></h2>
+          <div class="dc">${slot(a)}<span class="dc-heart ${chance ? 'on' : ''}">${chance >= 0.5 ? '♥♥' : chance ? '♥' : '·'}</span>${slot(b)}</div>
+          <p class="dc-mood">${esc(mood)}${dc.egg ? ' <b>Tem um ovo esperando espaço!</b>' : ''}</p>
+          <p class="muted" style="margin:0">O filhote é da forma base da mãe, herda 3 IVs dos pais (5 com <b>Laço do Destino</b>)
+            e a natureza de quem segura a <b>Pedra Eterna</b>.</p>
+        </div>
+
+        <div class="card"><h2>Ovos <span>${eggs.length}/${G.EGGS_MAX}</span></h2>
+          ${eggs.length ? `<div class="eggs">${eggs.map((e) => `
+            <div class="egg" data-egg="${e.id}">
+              ${spr('_egg', { size: 40 })}
+              <div class="grow">
+                <b>Ovo</b> <span class="muted egg-hint"></span>
+                <div class="bar"><i class="egg-bar" style="background:var(--gold)"></i></div>
+                <span class="nums egg-left"></span>
+              </div>
+            </div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nenhum ovo. Os ovos chocam com o tempo de jogo, inclusive com o app fechado.</p>'}
+        </div>
+
+        <div class="card"><h2>Deixar na creche</h2>
+          <div class="dc-pick">${pick.map((c) => {
+            const fit = a && !b ? G.breedChance(a, c) : null;
+            return `<div class="dc-row">
+              ${spr(c.species, { shiny: c.shiny, size: 28 })}
+              <span class="grow">${esc(nameOf(c))} ${genderIcon(c)} <span class="muted">nv ${c.level} · ${SPECIES_EGG(c)}</span></span>
+              ${fit != null ? `<span class="muted">${fit >= 0.5 ? '♥♥' : fit ? '♥' : '✕'}</span>` : ''}
+              <button class="btn" data-cmd="daycarePut" data-uid="${c.uid}" ${full || (state.team.includes(c) && state.team.length <= 1) ? 'disabled' : ''}>Deixar</button>
+            </div>`;
+          }).join('')}</div>
+        </div>`;
     },
 
     zones() {
@@ -478,7 +528,7 @@
       else action = `<button class="btn ${teaching ? '' : 'primary'}" data-cmd="teachPick" data-uid="${c.uid}">${teaching ? 'Cancelar' : 'Ensinar…'}</button>`;
       return `<div class="teach-row">
         ${spr(c.species, { shiny: c.shiny, size: 32 })}
-        <span class="grow"><b>${esc(nameOf(c))}</b> <span class="muted">nv ${c.level}${state.box.includes(c) ? ' · caixa' : ''}</span></span>
+        <span class="grow"><b>${esc(nameOf(c))}</b> ${genderIcon(c)} <span class="muted">nv ${c.level}${state.box.includes(c) ? ' · caixa' : ''}</span></span>
         ${action}
       </div>
       ${teaching ? `<div class="teach-pick">
@@ -516,6 +566,22 @@
   modal.addEventListener('close', () => { modalState = null; });
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); }); // clique fora fecha
 
+  const EGG_LABEL = { campo: 'Campo', agua: 'Água', planta: 'Planta', inseto: 'Inseto', mineral: 'Mineral', voador: 'Voador', indefinido: 'Sem ovos' };
+  const SPECIES_EGG = (c) => G.SPECIES[c.species].egg.map((g) => EGG_LABEL[g]).join('/');
+
+  /** Barras dos ovos: atualizam a cada sync sem redesenhar a aba. */
+  function renderEggs() {
+    for (const e of state.eggs || []) {
+      const el = document.querySelector(`[data-egg="${e.id}"]`);
+      if (!el) continue;
+      const k = e.progress / e.need;
+      el.querySelector('.egg-bar').style.width = `${Math.round(k * 100)}%`;
+      el.querySelector('.egg-hint').textContent = k > 0.85 ? 'Está quase chocando!' : k > 0.5 ? 'Às vezes se mexe…' : 'Ainda vai demorar.';
+      const left = Math.max(0, Math.ceil((e.need - e.progress) / 60));
+      el.querySelector('.egg-left').textContent = `faltam ~${left} min`;
+    }
+  }
+
   function renderStarters() {
     app.innerHTML = `
       <div class="card">
@@ -547,6 +613,8 @@
     if (!views[tab]) tab = 'team';
     app.innerHTML = views[tab]();
     renderModal();
+    renderEggs();
+    $('gear').classList.toggle('on', tab === 'settings');
     const auto = $('auto');
     if (auto) auto.addEventListener('change', (e) => send({ type: 'autoCatch', value: e.target.checked }));
     const am = $('autoMoves');
@@ -558,6 +626,7 @@
     state = s;
     const key = JSON.stringify({
       ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf, modal: modalState,
+      eggs: (s.eggs || []).map((e) => e.id), daycare: s.daycare && [s.daycare.mons.map((c) => [c.uid, c.held]), !!s.daycare.egg],
       team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort, c.held, c.nature]),
     });
     if (key !== lastKey) {
@@ -567,10 +636,18 @@
       window.scrollTo(0, scroll);
     } else {
       renderHero();
+      renderEggs();
     }
   }
 
   const rerender = () => { lastKey = ''; heroKey = ''; if (state) onState(state); };
+
+  $('gear').addEventListener('click', () => {
+    tab = tab === 'settings' ? 'team' : 'settings';
+    try { localStorage.setItem('taskmon-tab', tab); } catch { /* sem storage */ }
+    rerender();
+    window.scrollTo(0, 0);
+  });
 
   tabsEl.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-tab]');
@@ -602,6 +679,8 @@
       case 'moveInfo': openModal({ kind: 'move', id: d.move, uid: d.uid || null }); break;
       case 'tmInfo': openModal({ kind: 'tm', id: d.tm, teaching: null }); break;
       case 'closeModal': modal.close(); break;
+      case 'daycarePut': send({ type: 'daycarePut', uid: d.uid }); break;
+      case 'daycareTake': send({ type: 'daycareTake', uid: d.uid }); break;
       case 'buyTm': send({ type: 'buyTm', tm: d.tm }); break;
       case 'teachPick': modalState.teaching = modalState.teaching === d.uid ? null : d.uid; renderModal(); break;
       case 'teach':

@@ -260,6 +260,24 @@
       ],
       pal: { k: K, a: '#14b8a6', w: '#f5f5f4' },
     },
+    // Ovo (creche). Dá pra trocar por creatures/_egg.png.
+    _egg: {
+      rows: [
+        '............',
+        '.....kk.....',
+        '....kwwk....',
+        '...kwwwwk...',
+        '...kwswwk...',
+        '..kwwwwswk..',
+        '..kwsswwwk..',
+        '..kwwwwwwk..',
+        '..kwwwswwk..',
+        '...kwwwwk...',
+        '....kkkk....',
+        '............',
+      ],
+      pal: { k: K, w: '#fef9ef', s: '#86d48a' },
+    },
     // Itens de segurar: saquinho amarrado (a cor muda por item).
     _held: {
       rows: [
