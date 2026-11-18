@@ -148,6 +148,18 @@
     .pips i.on:nth-child(n+4) { background: #38bdf8; }
     .pips i.on:nth-child(n+7) { background: #a78bfa; }
     .pips i.on:nth-child(10) { background: var(--gold); }
+    .gene .up { color: #4ade80; font-style: normal; font-size: 9px; }
+    .gene .down { color: var(--danger); font-style: normal; font-size: 9px; }
+
+    /* ---------- item de segurar ---------- */
+    .held { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+    .held-empty { width: 20px; height: 20px; border-radius: 6px; border: 1px dashed var(--line); }
+    .held select {
+      font: inherit; font-size: 12px; color: var(--fg); background: var(--card2); border: 1px solid var(--line);
+      border-radius: 7px; padding: 3px 6px; max-width: 200px;
+    }
+    .held select:disabled { opacity: .5; }
+    .held-desc { flex-basis: 100%; font-size: 11px; color: var(--faint); }
     button.btn.mini { padding: 1px 6px; display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
     .bars { display: grid; gap: 3px; margin-top: 6px; }
     .bar { height: 5px; background: var(--bg2); border-radius: 3px; overflow: hidden; }
@@ -236,6 +248,7 @@
   <main id="app"><p class="muted">Conectando com a barra de tarefas…</p></main>
   <script src="../shared/bridge-fallback.js"></script>
   <script src="../shared/moves.js"></script>
+  <script src="../shared/items.js"></script>
   <script src="../shared/game.js"></script>
   <script src="../shared/sprites.js"></script>
   <script src="../shared/assets.js"></script>

@@ -102,11 +102,15 @@
   function item(id) {
     const ck = `i:${id}`;
     if (cache.has(ck)) return cache.get(ck);
+    const heldDef = root.Items && root.Items.HELD[id];
     const grit = id.startsWith('esforco');
-    const img = files[`items/${id}.png`] || (!grit && id !== 'capsula' && files['items/capsula.png']);
+    const img = files[`items/${id}.png`] || (!grit && !heldDef && id !== 'capsula' && files['items/capsula.png']);
     let sheet;
     if (img) sheet = makeSheet(img, `items/${id}.png`);
-    else if (grit) {
+    else if (heldDef) {
+      const base = SP.getSprite('_held');
+      sheet = { ...gridSheet('_held', false), key: id, src: heldDef.hue ? hueShift(base, heldDef.hue) : base };
+    } else if (grit) {
       // pixel art do montinho, com a cor girada por nível (pó → rocha)
       const tier = Number(id.slice(-1)) - 1;
       const base = SP.getSprite('_grit');

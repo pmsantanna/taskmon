@@ -260,6 +260,24 @@
       ],
       pal: { k: K, a: '#14b8a6', w: '#f5f5f4' },
     },
+    // Itens de segurar: saquinho amarrado (a cor muda por item).
+    _held: {
+      rows: [
+        '............',
+        '....k..k....',
+        '.....kk.....',
+        '....kbbk....',
+        '...kaaaak...',
+        '..kaabaaak..',
+        '..kabaaaak..',
+        '.kaaaaaaaak.',
+        '.kaaaaaaaak.',
+        '.kaaaaaaaak.',
+        '..kkkkkkkk..',
+        '............',
+      ],
+      pal: { k: K, a: '#ef4444', b: '#fecaca' },
+    },
     // Itens de esforço: montinho de areia/pedra (a cor muda por nível no painel/faixa).
     _grit: {
       rows: [

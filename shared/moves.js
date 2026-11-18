@@ -11,6 +11,7 @@
 //   powder     pó/esporo: criaturas de planta são imunes
 //   effect     { status: 'queimadura'|'veneno'|'paralisia'|'sono', chance? }
 //              { stat: { atk: -1, ... }, target: 'foe'|'self', chance? }
+//              { crit: 2 }  sobe estágios de crítico de quem usa
 //              (chance só vale pra golpes de dano; golpe de status sempre aplica se acertar)
 
 (function (root) {
@@ -41,6 +42,8 @@
     rosnado:      { name: 'Rosnado', type: 'normal', cat: 'status', acc: 100, pp: 40, effect: { stat: { atk: -1 }, target: 'foe' } },
     encarada:     { name: 'Encarada', type: 'normal', cat: 'status', acc: 100, pp: 30, effect: { stat: { def: -1 }, target: 'foe' } },
     grito:        { name: 'Grito de Guerra', type: 'normal', cat: 'status', acc: null, pp: 20, effect: { stat: { atk: 2 }, target: 'self' } },
+    concentrar:   { name: 'Concentração', type: 'normal', cat: 'status', acc: null, pp: 30, effect: { crit: 2 } },
+    miragem:      { name: 'Miragem', type: 'normal', cat: 'status', acc: null, pp: 15, effect: { stat: { eva: 1 }, target: 'self' } },
     soneca:       { name: 'Soneca', type: 'normal', cat: 'status', acc: null, pp: 10, heal: 0.5 },
 
     // ----- Fogo -----
@@ -109,11 +112,11 @@
     brotinho: L_BROTO,
     ipe: { ...L_BROTO, 16: ['raiz'], 22: ['petalas'], 30: ['esmagar'] },
     capi: L_CAPI,
-    capivarao: { ...L_CAPI, 18: ['esmagar'], 28: ['pancadao'] },
-    vagalume: { 1: ['choquinho', 'pisca'], 6: ['estatica'], 10: ['bote'], 14: ['faisca'], 19: ['zunido'], 24: ['relampago'] },
+    capivarao: { ...L_CAPI, 18: ['esmagar'], 22: ['concentrar'], 28: ['pancadao'] },
+    vagalume: { 1: ['choquinho', 'pisca'], 6: ['estatica'], 10: ['bote'], 12: ['miragem'], 14: ['faisca'], 19: ['zunido'], 24: ['relampago'] },
     seixo: L_SEIXO,
     pedregulho: { ...L_SEIXO, 24: ['esmagar'], 32: ['pancadao'] },
-    pipa: { 1: ['bicada', 'encarada'], 5: ['rajada'], 9: ['corrente_ar'], 13: ['rasante'], 19: ['ciclone'] },
+    pipa: { 1: ['bicada', 'encarada'], 5: ['rajada'], 9: ['corrente_ar'], 13: ['rasante'], 16: ['miragem', 'concentrar'], 19: ['ciclone'] },
     boitata: { 1: ['fagulha', 'fogo_fatuo', 'chama_interior'], 24: ['labareda'], 32: ['erupcao'] },
   };
 

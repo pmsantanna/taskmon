@@ -79,16 +79,24 @@
   }
 
   /** Quadro de atributos: valor, IV (avaliação do juiz) e nível de esforço com botão de item. */
+  function natureText(c) {
+    const n = G.NATURES[c.nature];
+    if (!n) return '';
+    return n.up ? `${n.name} (+${G.STAT_LABEL[n.up]}, −${G.STAT_LABEL[n.down]})` : `${n.name} (neutra)`;
+  }
+
   function genesBox(c) {
     const st = G.stats(c);
+    const nat = G.NATURES[c.nature] || {};
     const rows = G.STAT_KEYS.map((k) => {
+      const mark = nat.up === k ? '<i class="up">▲</i>' : nat.down === k ? '<i class="down">▼</i>' : '';
       const iv = c.ivs[k], ef = c.effort[k];
       const item = G.gritFor(ef);
       const have = item ? state.items[item] || 0 : 0;
       const pips = Array.from({ length: G.EFFORT_MAX }, (_, i) => `<i class="${i < ef ? 'on' : ''}"></i>`).join('');
       const rating = G.ivRating(iv);
       return `<div class="gene">
-        <span class="gk">${G.STAT_LABEL[k]}</span>
+        <span class="gk">${G.STAT_LABEL[k]} ${mark}</span>
         <b class="gv">${st[k]}</b>
         <span class="iv r${iv >= 31 ? 5 : iv >= 30 ? 4 : iv >= 26 ? 3 : iv >= 16 ? 2 : iv >= 1 ? 1 : 0}" title="IV ${iv}/31">${rating}</span>
         <span class="pips" title="Nível de esforço ${ef}/${G.EFFORT_MAX}">${pips}</span>
@@ -98,8 +106,26 @@
       </div>`;
     }).join('');
     return `<div class="editor genes">
+      <div><b>Natureza:</b> ${esc(natureText(c))}</div>
       <div class="muted">Valor · IV (avaliação) · nível de esforço. Os itens de esforço vêm da loja e de batalhas.</div>
       ${rows}
+    </div>`;
+  }
+
+  /** Linha do item de segurar: ícone + seletor com os itens da mochila. */
+  function heldRow(c) {
+    const owned = Object.keys(G.HELD).filter((id) => (state.items[id] || 0) > 0 && id !== c.held);
+    const cur = c.held && G.HELD[c.held];
+    const opts = [
+      `<option value="">${cur ? 'Tirar item' : 'Nenhum item'}</option>`,
+      ...(cur ? [`<option value="${c.held}" selected>${esc(cur.name)}</option>`] : []),
+      ...owned.map((id) => `<option value="${id}">${esc(G.HELD[id].name)} (${state.items[id]})</option>`),
+    ].join('');
+    return `<div class="held" title="${cur ? esc(cur.desc) : 'Compre itens de segurar na loja'}">
+      ${cur ? spr(c.held, { item: true, size: 20 }) : '<span class="held-empty"></span>'}
+      <span class="muted">Segurando</span>
+      <select data-hold="${c.uid}" ${!cur && !owned.length ? 'disabled' : ''}>${opts}</select>
+      ${cur ? `<span class="muted held-desc">${esc(cur.desc)}</span>` : ''}
     </div>`;
   }
 
@@ -257,6 +283,7 @@
           <button class="btn" data-cmd="editMoves" data-uid="${c.uid}">Golpes${c.known.length > c.moves.length ? ` <span class="new">${c.known.length - c.moves.length}</span>` : ''}</button>
         </div>
         <div class="moves">${c.moves.map((id) => moveChip(id, c)).join('')}</div>
+        ${heldRow(c)}
         ${editing === c.uid ? moveEditor(c) : ''}
         ${genesOf === c.uid ? genesBox(c) : ''}
       </div>`;
@@ -306,6 +333,15 @@
               : `${it.mult}× chance`} · você tem ${state.items[id] || 0}</span></span>
             <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
             <button class="btn" data-cmd="buy" data-item="${id}" data-qty="5" ${state.coins < it.price * 5 ? 'disabled' : ''}>+5</button>
+          </div>`).join('')}
+      </div></div>
+      <div class="card"><h2>Itens de segurar <span>1 por criatura</span></h2><div class="shop">
+        ${Object.entries(G.HELD).map(([id, it]) => `
+          <div class="row">
+            ${spr(id, { item: true, size: 28 })}
+            <span class="label"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
+              <span class="muted">${it.price} 🪙 · na mochila ${state.items[id] || 0} · em uso ${[...state.team, ...state.box].filter((c) => c.held === id).length}</span></span>
+            <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
           </div>`).join('')}
       </div></div>`;
     },
@@ -408,7 +444,7 @@
     state = s;
     const key = JSON.stringify({
       ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf,
-      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort]),
+      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort, c.held, c.nature]),
     });
     if (key !== lastKey) {
       lastKey = key;
@@ -432,6 +468,10 @@
   });
 
   app.addEventListener('change', (e) => {
+    if (e.target.dataset && e.target.dataset.hold) {
+      send({ type: 'hold', uid: e.target.dataset.hold, item: e.target.value || null });
+      return;
+    }
     const id = e.target.dataset && e.target.dataset.pick;
     if (!id) return;
     if (e.target.checked && !draft.includes(id) && draft.length < 4) draft.push(id);

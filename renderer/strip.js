@@ -89,8 +89,8 @@
     sim.toasts.push({ text, seconds });
   }
 
-  function floater(text, x, y, color = '#fff', life = 1.1) {
-    sim.floaters.push({ text, x, y, t: 0, color, life });
+  function floater(text, x, y, color = '#fff', life = 1.1, size = 10) {
+    sim.floaters.push({ text, x, y, t: 0, color, life, size });
   }
 
   // Registro da batalha (aparece no painel) e textos de evento.
@@ -186,14 +186,34 @@
         }
         case 'damage': {
           const color = e.mult > 1 ? '#fb923c' : e.mult < 1 ? '#a8a29e' : '#fff';
-          floater(`${e.amount}${e.crit ? '!' : ''}`, x, y, color);
-          sim.hit = { who: e.who, t: 0 };
+          floater(`${e.amount}`, x, y, color, 1.1, e.crit ? 13 : 10);
+          if (e.crit) floater('CRÍTICO!', x, y - 13, '#fde047', 1.2, 9);
+          sim.hit = { who: e.who, t: 0, crit: e.crit };
           if (e.crit) log('Um golpe crítico!');
           if (e.mult > 1) log('É super efetivo!');
           if (e.mult < 1) log('Não é muito efetivo…');
           break;
         }
-        case 'miss': log('Mas errou!'); floater('errou', posOf(e.who === 'lead' ? 'wild' : 'lead'), y, '#d6d3d1'); break;
+        case 'miss': log('Mas errou!'); floater('ERROU!', posOf(e.who === 'lead' ? 'wild' : 'lead'), y, '#d6d3d1', 1.1, 9); break;
+        case 'critUp':
+          if (e.failed) log(`A concentração de ${who} já está no máximo!`);
+          else { floater('Foco↑', x, y - 6, '#fde047'); log(`${who} está concentrado!`); }
+          break;
+        case 'item': {
+          const it = G.HELD[e.item];
+          const msg = {
+            heal: `${who} comeu a ${it.name} e recuperou HP!`,
+            cure: `${who} usou a ${it.name} e se curou!`,
+            sash: `${who} aguentou firme com a ${it.name}!`,
+            orb: `${who} perdeu um pouco de HP pela ${it.name}.`,
+            leftovers: `${who} recuperou um pouco de HP com as ${it.name}.`,
+          }[e.what];
+          if (e.what === 'heal' || e.what === 'leftovers') floater(`+${e.amount}`, x, y, '#4ade80');
+          else if (e.what === 'orb') floater(`-${e.amount}`, x, y + 4, '#fca5a5');
+          else floater(it.name, x, y - 8, '#fde68a', 1.2, 9);
+          log(msg);
+          break;
+        }
         case 'stat': {
           const up = e.stages > 0;
           if (e.failed) { log(`${G.STAT_LABEL[e.stat]} de ${who} não vai mais ${up ? 'subir' : 'cair'}!`); break; }
@@ -319,6 +339,7 @@
       G.addCaught(state, w);
       const where = state.box.includes(w) ? ' (foi pra caixa)' : '';
       toast(`Capturou ${name(w)}!${where}`, 3);
+      if (w.held) toast(`${G.SPECIES[w.species].name} estava segurando ${G.HELD[w.held].name}!`, 3);
       setPhase('caught');
     } else {
       toast('Escapou!');
@@ -539,6 +560,7 @@
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
     layout();
     const lead = G.getLead(state);
 
@@ -597,7 +619,7 @@
     // números flutuando
     for (const f of sim.floaters) {
       ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
-      text(f.text, f.x, f.y - f.t * 12, { size: 10, align: 'center', color: f.color });
+      text(f.text, f.x, f.y - f.t * 12, { size: f.size || 10, align: 'center', color: f.color });
       ctx.globalAlpha = 1;
     }
 
@@ -683,12 +705,19 @@
         }
         break;
       case 'buy':
-        if (G.buy(state, cmd.item, cmd.qty)) toast(`Comprou ${cmd.qty}× ${G.SHOP[cmd.item].name}`);
+        if (G.buy(state, cmd.item, cmd.qty)) toast(`Comprou ${cmd.qty}× ${(G.SHOP[cmd.item] || G.HELD[cmd.item]).name}`);
         else toast('Moedas insuficientes');
         break;
       case 'autoCatch':
         state.settings.autoCatch = !!cmd.value;
         break;
+      case 'hold': {
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        if (c && G.hold(state, c, cmd.item || null)) {
+          toast(cmd.item ? `${G.SPECIES[c.species].name} está segurando ${G.HELD[cmd.item].name}` : `Tirou o item de ${G.SPECIES[c.species].name}`);
+        }
+        break;
+      }
       case 'grit': {
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
         const used = c && G.useGrit(state, c, cmd.stat);

@@ -5,6 +5,9 @@
   'use strict';
   const MV = root.Moves || require('./moves.js');
   const { MOVES, LEARNSETS } = MV;
+  const IT = root.Items || require('./items.js');
+  const { NATURES, HELD, WILD_HELD } = IT;
+  const NATURE_IDS = Object.keys(NATURES);
 
   // ---------- Tipos ----------
   const TYPE_LABEL = {
@@ -132,14 +135,24 @@
   function ensureGenes(c, rng = Math.random) {
     if (!c.ivs) c.ivs = Object.fromEntries(STAT_KEYS.map((k) => [k, randInt(rng, 0, 31)]));
     if (!c.effort) c.effort = Object.fromEntries(STAT_KEYS.map((k) => [k, effortFromIv(c.ivs[k])]));
+    if (!NATURES[c.nature]) c.nature = NATURE_IDS[randInt(rng, 0, NATURE_IDS.length - 1)];
+    if (c.held === undefined) c.held = null;
     return c;
+  }
+
+  /** +10% / −10% / 1 conforme a natureza. */
+  function natureMult(c, stat) {
+    const n = NATURES[c.nature];
+    if (!n || n.up === n.down) return 1;
+    return stat === n.up ? 1.1 : stat === n.down ? 0.9 : 1;
   }
 
   function stats(c) {
     const b = SPECIES[c.species].base;
     const L = c.level;
     const iv = c.ivs || {}, ef = c.effort || {};
-    const s = (k) => Math.floor(((2 * b[k] + (iv[k] || 0)) * L) / 100) + 5 + effortBonus(b[k], ef[k], L);
+    // ⌊(⌊(2·Base + IV)·Nv/100⌋ + 5) × natureza⌋ + bônus de esforço
+    const s = (k) => Math.floor((Math.floor(((2 * b[k] + (iv[k] || 0)) * L) / 100) + 5) * natureMult(c, k)) + effortBonus(b[k], ef[k], L);
     return {
       hp: Math.floor(((2 * b.hp + (iv.hp || 0)) * L) / 100) + L + 10 + effortBonus(b.hp, ef.hp, L),
       atk: s('atk'), def: s('def'), mag: s('mag'), res: s('res'), spd: s('spd'),
@@ -167,7 +180,7 @@
 
   /** Garante known/moves/pp (criaturas novas e saves antigos). Como no original: os 4 últimos aprendidos. */
   function ensureMoves(c) {
-    if (!c.ivs) { // save antigo: sorteia os genes mantendo a proporção do HP
+    if (!c.ivs || !c.nature) { // save antigo: sorteia o que falta mantendo a proporção do HP
       const ratio = c.hp / maxHp(c);
       ensureGenes(c);
       c.hp = Math.round(maxHp(c) * ratio);
@@ -235,7 +248,35 @@
     return (EFFECT[attType] && EFFECT[attType][defType]) ?? 1;
   }
 
-  // ---------- Batalha (estilo original: categoria, estágios, status, prioridade) ----------
+  // ---------- Batalha (estilo original: categoria, estágios, status, prioridade, crítico, itens) ----------
+  // Crítico por estágios (gerações recentes): 0 → 1/24, 1 → 1/8, 2 → 1/2, 3+ → sempre. Dano ×1,5.
+  // Golpe de crítico alto = +1, item Lente de Mira = +1, Concentração = +2.
+  const CRIT_RATE = [1 / 24, 1 / 8, 1 / 2, 1];
+  const heldOf = (b) => (b.c.held && HELD[b.c.held]) || {};
+  const canUseOnce = (b, key) => !!heldOf(b)[key] && !b.used[b.c.held];
+
+  function critStage(att, m) {
+    return Math.min(3, (m.crit || 0) + att.critStage + (heldOf(att).crit || 0));
+  }
+
+  /** Chance de acertar: precisão do golpe × estágios (precisão − evasão, de −6 a +6) × itens. */
+  function hitChance(att, def, m) {
+    if (m.acc == null) return 1;
+    return (m.acc / 100) * accStageMult(clamp(att.stages.acc - def.stages.eva, -6, 6))
+      * (heldOf(att).accMult || 1) * (heldOf(def).evaMult || 1);
+  }
+
+  /** Baga da Vida: abaixo da metade do HP, recupera uma parte (1× por luta). */
+  function checkBerry(b, ev) {
+    const c = b.c;
+    if (c.hp > 0 && c.hp <= maxHp(c) / 2 && canUseOnce(b, 'berryHeal')) {
+      b.used[c.held] = true;
+      const h = Math.min(maxHp(c) - c.hp, Math.floor(maxHp(c) * heldOf(b).berryHeal));
+      c.hp += h;
+      ev.push({ kind: 'item', who: b.side, item: c.held, what: 'heal', amount: h });
+    }
+  }
+
   const STAGES = ['atk', 'def', 'mag', 'res', 'spd', 'acc', 'eva'];
   const stageMult = (s) => (s >= 0 ? (2 + s) / 2 : 2 / (2 - s));     // atributos: ×0.25 .. ×4
   const accStageMult = (s) => (s >= 0 ? (3 + s) / 3 : 3 / (3 - s));  // precisão/evasão: ×0.33 .. ×3
@@ -243,7 +284,7 @@
   /** Estado de uma criatura dentro da batalha (os estágios zeram quando a luta acaba). */
   function battler(c, side) {
     ensureMoves(c);
-    return { c, side, stages: Object.fromEntries(STAGES.map((k) => [k, 0])) };
+    return { c, side, stages: Object.fromEntries(STAGES.map((k) => [k, 0])), critStage: 0, used: {} };
   }
 
   function effStat(b, stat, { ignoreDrops = false, ignoreBoosts = false } = {}) {
@@ -270,14 +311,21 @@
   function moveDamage(att, def, id, rng = Math.random) {
     const m = MOVES[id];
     const physical = m.cat === 'fisico';
-    const crit = rng() < (m.crit ? 0.125 : 0.0625);
+    const crit = rng() < CRIT_RATE[critStage(att, m)];
     const A = effStat(att, physical ? 'atk' : 'mag', { ignoreDrops: crit });
     const D = effStat(def, physical ? 'def' : 'res', { ignoreBoosts: crit });
     const mult = m.typeless ? 1 : typeMult(m.type, typeOf(def.c));
     const stab = !m.typeless && m.type === typeOf(att.c) ? 1.5 : 1;
     const burn = physical && att.c.status === 'queimadura' ? 0.5 : 1;
+    // itens de quem ataca
+    const h = heldOf(att);
+    let item = 1;
+    if (h.catBoost && h.catBoost.cat === m.cat) item *= h.catBoost.mult;
+    if (h.typeBoost && h.typeBoost.type === m.type && !m.typeless) item *= h.typeBoost.mult;
+    if (h.superMult && mult > 1) item *= h.superMult;
+    if (h.orb) item *= 1.3;
     const base = ((2 * att.c.level / 5 + 2) * m.power * A / D) / 50 + 2;
-    const amount = Math.max(1, Math.floor(base * stab * mult * (crit ? 1.5 : 1) * burn * rand(rng, 0.85, 1)));
+    const amount = Math.max(1, Math.floor(base * stab * mult * (crit ? 1.5 : 1) * burn * item * rand(rng, 0.85, 1)));
     return { amount, crit, mult };
   }
 
@@ -297,6 +345,12 @@
     target.c.status = status;
     if (status === 'sono') target.c.sleep = 1 + Math.floor(rand(Math.random, 0, 3)); // 1 a 3 turnos
     ev.push({ kind: 'status', who: target.side, status });
+    if (canUseOnce(target, 'berryCure')) { // Baga Curativa age na hora
+      target.used[target.c.held] = true;
+      target.c.status = null;
+      target.c.sleep = 0;
+      ev.push({ kind: 'item', who: target.side, item: target.c.held, what: 'cure', status });
+    }
     return true;
   }
 
@@ -326,16 +380,26 @@
     ev.push({ kind: 'use', who: att.side, move: id });
 
     const selfTarget = m.cat === 'status' && (m.heal || (m.effect && m.effect.target === 'self'));
-    if (m.acc != null && !selfTarget) {
-      const chance = (m.acc / 100) * accStageMult(att.stages.acc - def.stages.eva);
-      if (rng() >= chance) { ev.push({ kind: 'miss', who: att.side }); return ev; }
+    if (!selfTarget && rng() >= hitChance(att, def, m)) {
+      ev.push({ kind: 'miss', who: att.side });
+      return ev;
     }
 
     if (m.cat !== 'status') {
       const r = moveDamage(att, def, id, rng);
-      const dealt = Math.min(def.c.hp, r.amount);
-      def.c.hp -= dealt;
-      ev.push({ kind: 'damage', who: def.side, amount: r.amount, crit: r.crit, mult: r.mult });
+      let dealt = Math.min(def.c.hp, r.amount);
+      // Fita de Foco: com HP cheio, segura com 1
+      if (dealt >= def.c.hp && def.c.hp === maxHp(def.c) && canUseOnce(def, 'sash')) {
+        def.used[def.c.held] = true;
+        dealt = def.c.hp - 1;
+        def.c.hp -= dealt;
+        ev.push({ kind: 'damage', who: def.side, amount: dealt, crit: r.crit, mult: r.mult });
+        ev.push({ kind: 'item', who: def.side, item: def.c.held, what: 'sash' });
+      } else {
+        def.c.hp -= dealt;
+        ev.push({ kind: 'damage', who: def.side, amount: r.amount, crit: r.crit, mult: r.mult });
+      }
+      checkBerry(def, ev);
       if (m.drain && dealt > 0) {
         const h = Math.min(maxHp(c) - c.hp, Math.max(1, Math.floor(dealt * m.drain)));
         if (h > 0) { c.hp += h; ev.push({ kind: 'heal', who: att.side, amount: h, drain: true }); }
@@ -345,6 +409,12 @@
         c.hp -= rc;
         ev.push({ kind: 'recoil', who: att.side, amount: rc });
       }
+      if (heldOf(att).orb && dealt > 0 && c.hp > 0) { // Orbe Vital cobra 10% do HP
+        const oc = Math.min(c.hp, Math.max(1, Math.floor(maxHp(c) / 10)));
+        c.hp -= oc;
+        ev.push({ kind: 'item', who: att.side, item: c.held, what: 'orb', amount: oc });
+      }
+      checkBerry(att, ev);
       // efeito secundário (com chance), só se o alvo ainda está de pé
       const e = m.effect;
       if (e && def.c.hp > 0 && rng() < (e.chance ?? 1)) {
@@ -360,6 +430,11 @@
       const e = m.effect;
       if (e && e.status) applyStatus(def, e.status, m, ev);
       if (e && e.stat) applyStages(e.target === 'self' ? att : def, e.stat, ev);
+      if (e && e.crit) {
+        const before = att.critStage;
+        att.critStage = Math.min(3, before + e.crit);
+        ev.push({ kind: 'critUp', who: att.side, failed: before === att.critStage });
+      }
     }
 
     if (def.c.hp <= 0) ev.push({ kind: 'faint', who: def.side });
@@ -379,6 +454,12 @@
       ev.push({ kind: 'residual', who: b.side, status: c.status, amount });
       if (c.hp <= 0) ev.push({ kind: 'faint', who: b.side });
     }
+    if (c.hp > 0 && heldOf(b).leftovers && c.hp < maxHp(c)) {
+      const h = Math.min(maxHp(c) - c.hp, Math.max(1, Math.floor(maxHp(c) / 16)));
+      c.hp += h;
+      ev.push({ kind: 'item', who: b.side, item: c.held, what: 'leftovers', amount: h });
+    }
+    checkBerry(b, ev);
     return ev;
   }
 
@@ -415,6 +496,8 @@
       } else if (m.effect?.status) {
         score = foe.c.status || statusImmune(foe, m.effect.status, m) ? 0 : m.effect.status === 'sono' ? 75 : 60;
         score *= (m.acc ?? 100) / 100;
+      } else if (m.effect?.crit) {
+        score = self.critStage < 2 && hpR > 0.5 ? 40 : 2;
       } else if (m.effect?.stat) {
         const target = m.effect.target === 'self' ? self : foe;
         const [stat, delta] = Object.entries(m.effect.stat)[0];
@@ -526,6 +609,7 @@
     const zone = ZONES.find((z) => z.id === state.zone) || ZONES[0];
     const species = weighted(rng, zone.pool);
     const wild = createCreature(species, randInt(rng, zone.levels[0], zone.levels[1]), rng);
+    if (rng() < 0.08) wild.held = WILD_HELD[randInt(rng, 0, WILD_HELD.length - 1)]; // vem junto na captura
     state.dex.seen[species] = true;
     return wild;
   }
@@ -544,13 +628,16 @@
   /** XP pro líder e uma parte (30%) pro resto da equipe. Devolve os eventos do líder. */
   function rewardWin(state, wild, rng = Math.random) {
     const xp = xpReward(wild);
-    const coins = coinReward(wild, rng);
+    let coins = coinReward(wild, rng);
     const lead = getLead(state);
     const auto = state.settings.autoMoves !== false;
-    const events = lead ? gainXp(lead, xp, auto) : [];
+    const xpOf = (c) => (c.held && HELD[c.held].xpMult) || 1; // Ovo da Sorte
+    const events = lead ? gainXp(lead, Math.ceil(xp * xpOf(lead)), auto) : [];
     for (const c of state.team) {
-      if (c !== lead) gainXp(c, Math.ceil(xp * 0.3), auto);
+      if (c !== lead) gainXp(c, Math.ceil(xp * 0.3 * xpOf(c)), auto);
     }
+    const coinMult = (lead && lead.held && HELD[lead.held].coinMult) || 1; // Moeda da Sorte
+    coins *= coinMult;
     state.coins += coins;
     state.stats.battles++;
     state.stats.wins++;
@@ -565,12 +652,21 @@
   }
 
   function buy(state, item, qty = 1) {
-    const it = SHOP[item];
+    const it = SHOP[item] || HELD[item];
     if (!it || qty < 1) return false;
     const cost = it.price * qty;
     if (state.coins < cost) return false;
     state.coins -= cost;
     state.items[item] = (state.items[item] || 0) + qty;
+    return true;
+  }
+
+  /** Dá um item pra criatura segurar (null = tirar). O item anterior volta pra mochila. */
+  function hold(state, c, item) {
+    if (item && (!HELD[item] || !(state.items[item] > 0))) return false;
+    if (c.held) state.items[c.held] = (state.items[c.held] || 0) + 1;
+    c.held = item || null;
+    if (item) state.items[item]--;
     return true;
   }
 
@@ -614,6 +710,7 @@
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
+    NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
     MOVES, LEARNSETS, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
     stats, maxHp, xpToNext, createCreature, typeMult, gainXp, xpReward, coinReward,
