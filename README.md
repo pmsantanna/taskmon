@@ -40,8 +40,9 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, monitor,
   ficar acima da barra, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
-- **Golpes**: cada criatura tem até 4, aprendidos por nível. Na aba Equipe, o botão **Golpes**
-  troca os ativos (passe o mouse num golpe pra ver os detalhes).
+- **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. Na aba Equipe, o botão **Golpes**
+  troca os ativos; clique em qualquer golpe pra abrir os detalhes.
+- **MTs**: aba própria no painel. Compre na loja ou ache as exclusivas em batalha e ensine pra quem for compatível.
 - Brilhantes: 1 em 256. Lendário escondido no Vulcão. 👀
 
 ## Batalha
@@ -64,6 +65,15 @@ empatando, o mais **rápido**. Os dois lados lutam sozinhos (uma IA pontua os go
 - Com 4 golpes e um novo aprendido, troca o mais fraco sozinho (dá pra desligar em Ajustes).
 
 Golpes e quem aprende o quê ficam em `shared/moves.js`.
+
+### MTs
+
+22 máquinas reutilizáveis (`TMS` em `shared/moves.js`): 15 vendidas na aba MTs e 7 **exclusivas**
+que só caem de batalhas (2,5% por vitória, nas zonas indicadas, até achar todas). Cada MT diz por tipo
+e/ou espécie quem pode aprender. Ao ensinar com 4 golpes, você escolhe qual esquecer ou só guarda o novo.
+
+Golpes de MT com mecânica própria: **Proteger** (bloqueia o turno; repetido falha cada vez mais),
+**Descanso** (HP cheio e dorme 2 turnos) e **Hiper-Raio** (perde o turno seguinte recarregando).
 
 ### IVs e níveis de esforço (como no Legends: Arceus)
 

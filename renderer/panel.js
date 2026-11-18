@@ -21,6 +21,7 @@
     { id: 'box', label: 'Caixa' },
     { id: 'zones', label: 'Zonas' },
     { id: 'shop', label: 'Loja' },
+    { id: 'tms', label: 'MTs' },
     { id: 'dex', label: 'Bestiário' },
     { id: 'settings', label: 'Ajustes' },
   ];
@@ -53,29 +54,53 @@
     const cat = G.CATEGORY[m.cat];
     const pp = `${c.pp?.[id] ?? m.pp}/${m.pp} PP`;
     const power = m.cat === 'status' ? '—' : m.power;
-    return `<div class="move" style="--t:${G.TYPE_COLOR[m.type]}" title="${esc(moveTip(m))}">
+    return `<button class="move" style="--t:${G.TYPE_COLOR[m.type]}" data-cmd="moveInfo" data-move="${id}" data-uid="${c.uid}">
       <b>${esc(m.name)}</b>
       <span><i style="color:${cat.color}">${cat.icon}</i> ${power} · <em data-pp-of="${c.uid}" data-move="${id}">${pp}</em></span>
-    </div>`;
+    </button>`;
   }
 
-  function moveTip(m) {
-    const parts = [`${G.TYPE_LABEL[m.type]} · ${G.CATEGORY[m.cat].label}`];
-    if (m.cat !== 'status') parts.push(`Poder ${m.power}`);
-    parts.push(`Precisão ${m.acc == null ? '—' : m.acc + '%'}`);
-    if (m.priority) parts.push(`Prioridade +${m.priority}`);
-    if (m.crit) parts.push('Crítico alto');
-    if (m.drain) parts.push(`Recupera ${m.drain * 100}% do dano`);
-    if (m.recoil) parts.push(`Recuo de ${Math.round(m.recoil * 100)}%`);
-    if (m.heal) parts.push(`Cura ${m.heal * 100}% do HP`);
-    const e = m.effect;
-    if (e && e.status) parts.push(`${e.chance ? Math.round(e.chance * 100) + '%: ' : ''}${G.STATUS[e.status].label}`);
-    if (e && e.stat) {
-      const who = e.target === 'self' ? 'próprio' : 'alvo';
-      const st = Object.entries(e.stat).map(([k, v]) => `${G.STAT_LABEL[k]} ${v > 0 ? '+' : ''}${v}`).join(', ');
-      parts.push(`${e.chance ? Math.round(e.chance * 100) + '%: ' : ''}${st} (${who})`);
+  const catBadge = (cat) => `<span class="cat" style="--c:${G.CATEGORY[cat].color}">${G.CATEGORY[cat].icon} ${G.CATEGORY[cat].label}</span>`;
+  const tmOfMove = (id) => Object.keys(G.TMS).find((t) => G.TMS[t].move === id);
+
+  /** Quem aprende o golpe por nível (espécies já vistas; as outras ficam como ???). */
+  function learnedBy(id) {
+    const out = [];
+    for (const sp of G.SPECIES_ORDER) {
+      const ls = G.LEARNSETS[sp] || {};
+      const lvl = Object.keys(ls).map(Number).sort((a, b) => a - b).find((l) => ls[l].includes(id));
+      if (lvl == null) continue;
+      // evolução que herda o mesmo nível da forma anterior não precisa aparecer duas vezes
+      const prev = G.SPECIES_ORDER.find((o) => G.SPECIES[o].evolvesTo === sp);
+      if (prev && (G.LEARNSETS[prev] || {})[lvl]?.includes(id)) continue;
+      out.push({ sp, lvl, seen: !!state.dex.seen[sp] });
     }
-    return parts.join(' · ');
+    return out;
+  }
+
+  /** Conteúdo do popup de um golpe: cabeçalho, números, descrição e como aprender. */
+  function moveDetails(id, c = null) {
+    const m = G.MOVES[id];
+    const lines = G.describeMove(id);
+    const stat = (label, value) => `<div><span>${label}</span><b>${value}</b></div>`;
+    const tm = tmOfMove(id);
+    const by = learnedBy(id);
+    return `
+      <div class="md-head" style="--t:${G.TYPE_COLOR[m.type]}">
+        <h3>${esc(m.name)}</h3>
+        <div class="md-tags">${typeBadge(m.type)}${catBadge(m.cat)}</div>
+      </div>
+      <div class="md-stats">
+        ${stat('Poder', m.cat === 'status' ? '—' : m.power)}
+        ${stat('Precisão', m.acc == null ? 'sempre' : `${m.acc}%`)}
+        ${stat('PP', c && c.pp?.[id] != null ? `${c.pp[id]}/${m.pp}` : m.pp)}
+        ${stat('Prioridade', m.priority ? `+${m.priority}` : '0')}
+      </div>
+      <ul class="md-desc">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      ${by.length || tm ? `<div class="md-learn">
+        ${by.length ? `<div><span class="muted">Aprendem por nível:</span> ${by.map((b) => `<span class="lchip">${b.seen ? esc(G.SPECIES[b.sp].name) : '???'} <i>nv ${b.lvl}</i></span>`).join('')}</div>` : ''}
+        ${tm ? `<div><span class="muted">Máquina:</span> <button class="lchip link" data-cmd="tmInfo" data-tm="${tm}">${tm.toUpperCase()}${G.hasTm(state, tm) ? ' ✓' : ''}</button></div>` : ''}
+      </div>` : ''}`;
   }
 
   /** Quadro de atributos: valor, IV (avaliação do juiz) e nível de esforço com botão de item. */
@@ -136,9 +161,10 @@
         ${c.known.map((id) => {
           const on = draft.includes(id);
           const m = G.MOVES[id];
-          return `<label class="pick ${on ? 'on' : ''}" style="--t:${G.TYPE_COLOR[m.type]}" title="${esc(moveTip(m))}">
+          return `<label class="pick ${on ? 'on' : ''}" style="--t:${G.TYPE_COLOR[m.type]}">
             <input type="checkbox" data-pick="${id}" ${on ? 'checked' : ''} ${!on && draft.length >= 4 ? 'disabled' : ''}>
             <b>${esc(m.name)}</b><span>${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power}</span>
+            <button class="info" data-cmd="moveInfo" data-move="${id}" data-uid="${c.uid}" title="Detalhes">?</button>
           </label>`;
         }).join('')}
       </div>
@@ -346,6 +372,30 @@
       </div></div>`;
     },
 
+    tms() {
+      const ids = Object.keys(G.TMS);
+      const owned = ids.filter((t) => G.hasTm(state, t)).length;
+      const card = (t) => {
+        const tm = G.TMS[t], m = G.MOVES[tm.move], have = G.hasTm(state, t);
+        const canTeach = have && [...state.team, ...state.box].some((c) => G.canLearnTm(c, t) && !c.moves.includes(tm.move));
+        let foot;
+        if (have) foot = `<span class="tag">TENHO</span>${canTeach ? '<span class="muted">pode ensinar</span>' : ''}`;
+        else if (tm.price != null) foot = `<span class="muted">${tm.price} 🪙</span>`;
+        else foot = `<span class="tag excl">EXCLUSIVA</span><span class="muted">${tm.drop.map((z) => esc(G.ZONES.find((x) => x.id === z).name)).join(', ')}</span>`;
+        return `<button class="tm ${have ? 'have' : ''}" style="--t:${G.TYPE_COLOR[m.type]}" data-cmd="tmInfo" data-tm="${t}">
+          <span class="tm-no">${t.toUpperCase()}</span>
+          <b>${esc(m.name)}</b>
+          <span class="tm-meta">${G.TYPE_LABEL[m.type]} · ${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power}</span>
+          <span class="tm-foot">${foot}</span>
+        </button>`;
+      };
+      return `<div class="card"><h2>Máquinas de técnica <span>${owned}/${ids.length}</span></h2>
+        <p class="muted" style="margin:0 0 10px">MTs ensinam golpes e não se gastam: compre uma vez e ensine pra todo mundo compatível.
+          As exclusivas só caem de batalhas na zona indicada.</p>
+        <div class="tms">${ids.map(card).join('')}</div>
+      </div>`;
+    },
+
     dex() {
       const caught = G.SPECIES_ORDER.filter((id) => state.dex.caught[id]).length;
       return `<div class="card"><h2>Bestiário <span>${caught}/${G.SPECIES_ORDER.length}</span></h2>
@@ -403,6 +453,69 @@
     },
   };
 
+  // ---------- Popup (golpe / MT) ----------
+  const modal = $('modal');
+  let modalState = null; // { kind: 'move', id, uid } | { kind: 'tm', id, teaching }
+
+  function openModal(st) {
+    modalState = st;
+    renderModal();
+    if (!modal.open) modal.showModal();
+  }
+
+  function tmTeachList(t) {
+    const tm = G.TMS[t];
+    const all = [...state.team, ...state.box];
+    const fits = all.filter((c) => G.canLearnTm(c, t));
+    if (!fits.length) return '<p class="muted">Ninguém da sua equipe ou caixa pode aprender essa MT.</p>';
+    return fits.map((c) => {
+      const knows = c.moves.includes(tm.move);
+      const teaching = modalState.teaching === c.uid;
+      let action;
+      if (knows) action = '<span class="muted">já sabe</span>';
+      else if (!G.hasTm(state, t)) action = '<span class="muted">pode aprender</span>';
+      else if (c.moves.length < 4) action = `<button class="btn primary" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}">Ensinar</button>`;
+      else action = `<button class="btn ${teaching ? '' : 'primary'}" data-cmd="teachPick" data-uid="${c.uid}">${teaching ? 'Cancelar' : 'Ensinar…'}</button>`;
+      return `<div class="teach-row">
+        ${spr(c.species, { shiny: c.shiny, size: 32 })}
+        <span class="grow"><b>${esc(nameOf(c))}</b> <span class="muted">nv ${c.level}${state.box.includes(c) ? ' · caixa' : ''}</span></span>
+        ${action}
+      </div>
+      ${teaching ? `<div class="teach-pick">
+        <span class="muted">Esquecer qual golpe?</span>
+        <div class="known">${c.moves.map((id) => `<button class="pick swap" style="--t:${G.TYPE_COLOR[G.MOVES[id].type]}" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}" data-replace="${id}"><b>${esc(G.MOVES[id].name)}</b><span>trocar</span></button>`).join('')}</div>
+        <button class="btn" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}">Só aprender (guardar pra depois)</button>
+      </div>` : ''}`;
+    }).join('');
+  }
+
+  function renderModal() {
+    if (!modalState || !state) return;
+    let body = '';
+    if (modalState.kind === 'move') {
+      const c = [...state.team, ...state.box].find((x) => x.uid === modalState.uid) || null;
+      body = moveDetails(modalState.id, c);
+    } else {
+      const t = modalState.id, tm = G.TMS[t];
+      const have = G.hasTm(state, t);
+      let get;
+      if (have) get = '<span class="tag">VOCÊ TEM</span>';
+      else if (tm.price != null) get = `<button class="btn primary" data-cmd="buyTm" data-tm="${t}" ${state.coins < tm.price ? 'disabled' : ''}>Comprar por ${tm.price} 🪙</button>`;
+      else get = `<span class="tag excl">EXCLUSIVA</span> <span class="muted">cai em batalhas: ${tm.drop.map((z) => esc(G.ZONES.find((x) => x.id === z).name)).join(', ')}</span>`;
+      body = `<div class="md-tm"><b>${t.toUpperCase()}</b> ${get}</div>
+        ${moveDetails(tm.move)}
+        <h4>Quem pode aprender</h4>
+        ${tmTeachList(t)}`;
+    }
+    modal.innerHTML = `<div class="md">
+      <button class="md-close" data-cmd="closeModal" aria-label="Fechar">✕</button>
+      ${body}
+    </div>`;
+  }
+
+  modal.addEventListener('close', () => { modalState = null; });
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); }); // clique fora fecha
+
   function renderStarters() {
     app.innerHTML = `
       <div class="card">
@@ -433,6 +546,7 @@
     if (!state.starterChosen) return renderStarters();
     if (!views[tab]) tab = 'team';
     app.innerHTML = views[tab]();
+    renderModal();
     const auto = $('auto');
     if (auto) auto.addEventListener('change', (e) => send({ type: 'autoCatch', value: e.target.checked }));
     const am = $('autoMoves');
@@ -443,7 +557,7 @@
   function onState(s) {
     state = s;
     const key = JSON.stringify({
-      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf,
+      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf, modal: modalState,
       team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort, c.held, c.nature]),
     });
     if (key !== lastKey) {
@@ -479,11 +593,21 @@
     rerender();
   });
 
-  app.addEventListener('click', (e) => {
+  function onCommandClick(e) {
     const b = e.target.closest('button[data-cmd]');
     if (!b) return;
+    e.preventDefault(); // não marca o checkbox quando o botão "?" está dentro do label
     const d = b.dataset;
     switch (d.cmd) {
+      case 'moveInfo': openModal({ kind: 'move', id: d.move, uid: d.uid || null }); break;
+      case 'tmInfo': openModal({ kind: 'tm', id: d.tm, teaching: null }); break;
+      case 'closeModal': modal.close(); break;
+      case 'buyTm': send({ type: 'buyTm', tm: d.tm }); break;
+      case 'teachPick': modalState.teaching = modalState.teaching === d.uid ? null : d.uid; renderModal(); break;
+      case 'teach':
+        send({ type: 'teachTm', tm: d.tm, uid: d.uid, replace: d.replace || null });
+        modalState.teaching = null;
+        break;
       case 'starter': send({ type: 'chooseStarter', species: d.species }); break;
       case 'setLead': send({ type: 'setLead', uid: d.uid }); break;
       case 'toBox': send({ type: 'move', uid: d.uid, to: 'box' }); break;
@@ -506,7 +630,9 @@
         if (confirm('Apagar todo o progresso e começar de novo?')) send({ type: 'reset' });
         break;
     }
-  });
+  }
+  app.addEventListener('click', onCommandClick);
+  modal.addEventListener('click', onCommandClick);
 
   A.onChange(() => { applyTheme(); rerender(); });
   await A.load();

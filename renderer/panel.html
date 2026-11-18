@@ -74,7 +74,7 @@
       background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
     }
     nav button {
-      flex: 1; padding: 6px 2px; border: 0; border-radius: 7px; background: transparent; color: var(--dim);
+      flex: 1; padding: 6px 1px; font-size: 11.5px !important; letter-spacing: -.01em; border: 0; border-radius: 7px; background: transparent; color: var(--dim);
       font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
     }
     nav button:hover { color: var(--fg); }
@@ -114,8 +114,10 @@
     .mon .moves { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
     .move {
       display: flex; flex-direction: column; gap: 1px; padding: 5px 8px; border-radius: 7px; background: var(--bg2);
-      border-left: 3px solid var(--t); min-width: 0; cursor: help;
+      border: 0; border-left: 3px solid var(--t); min-width: 0; cursor: pointer; text-align: left; color: var(--fg); font: inherit;
+      transition: background .15s;
     }
+    .move:hover { background: color-mix(in srgb, var(--t) 14%, var(--bg2)); }
     .move b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .move span { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
     .move em { font-style: normal; }
@@ -132,6 +134,62 @@
     .log { display: grid; gap: 1px; font-size: 11.5px; color: var(--dim); padding: 6px 8px; border-radius: 7px; background: var(--bg2); }
     .log div:last-child { color: var(--fg); }
     .log[hidden] { display: none; }
+    .pick { grid-template-columns: auto 1fr auto auto; }
+    .pick .info {
+      width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--bg2);
+      color: var(--dim); font: 700 11px/1 inherit; cursor: pointer;
+    }
+    .pick .info:hover { color: var(--fg); border-color: var(--accent); }
+
+    /* ---------- popup ---------- */
+    dialog#modal {
+      width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line);
+      border-radius: 14px; background: var(--card); color: var(--fg); box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    }
+    dialog#modal::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(2px); }
+    .md { position: relative; padding: 16px; display: grid; gap: 12px; }
+    .md-close {
+      position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line);
+      background: var(--card2); color: var(--dim); cursor: pointer; font-size: 13px;
+    }
+    .md-close:hover { color: var(--fg); border-color: var(--accent); }
+    .md-head { border-left: 4px solid var(--t); padding-left: 10px; display: grid; gap: 6px; padding-right: 36px; }
+    .md-head h3 { margin: 0; font-size: 18px; }
+    .md-tags { display: flex; gap: 6px; align-items: center; }
+    .cat { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 99px; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+    .md-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .md-stats div { background: var(--bg2); border-radius: 8px; padding: 7px 4px; text-align: center; display: grid; gap: 1px; }
+    .md-stats span { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+    .md-stats b { font-size: 15px; font-variant-numeric: tabular-nums; }
+    .md-desc { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; font-size: 13px; line-height: 1.45; }
+    .md-desc li::marker { color: var(--accent); }
+    .md-learn { display: grid; gap: 6px; font-size: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .lchip { display: inline-block; margin: 2px 2px 0 0; padding: 1px 7px; border-radius: 99px; background: var(--card2); border: 1px solid var(--line); font-size: 11px; color: var(--fg); }
+    .lchip i { font-style: normal; color: var(--faint); }
+    .lchip.link { cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+    .lchip.link:hover { border-color: var(--accent); }
+    .md-tm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+    .md-tm > b { font-size: 12px; letter-spacing: .06em; color: var(--dim); }
+    .md h4 { margin: 4px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
+    .teach-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; background: var(--card2); }
+    .teach-row .grow { flex: 1; min-width: 0; }
+    .teach-pick { display: grid; gap: 6px; margin: -4px 0 4px 18px; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: var(--bg2); }
+    .pick.swap { grid-template-columns: 1fr auto; text-align: left; color: var(--fg); font: inherit; font-size: 12px; }
+    .pick.swap:hover { border-color: var(--danger); }
+    .tag.excl { color: #fde68a; background: #4a3a10; }
+
+    /* ---------- MTs ---------- */
+    .tms { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+    .tm {
+      display: grid; gap: 2px; text-align: left; padding: 9px 10px; border-radius: 10px; cursor: pointer; font: inherit; color: var(--fg);
+      background: var(--card2); border: 1px solid var(--line); border-top: 3px solid var(--t); opacity: .78;
+    }
+    .tm.have { opacity: 1; }
+    .tm:hover { border-color: var(--accent); border-top-color: var(--t); opacity: 1; }
+    .tm-no { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--faint); }
+    .tm b { font-size: 13px; }
+    .tm-meta { font-size: 11px; color: var(--dim); }
+    .tm-foot { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; font-size: 11px; }
 
     /* ---------- IV / esforço ---------- */
     .genes { gap: 4px; }
@@ -246,6 +304,7 @@
   <div id="hero"></div>
   <nav id="tabs" hidden></nav>
   <main id="app"><p class="muted">Conectando com a barra de tarefas…</p></main>
+  <dialog id="modal"></dialog>
   <script src="../shared/bridge-fallback.js"></script>
   <script src="../shared/moves.js"></script>
   <script src="../shared/items.js"></script>
