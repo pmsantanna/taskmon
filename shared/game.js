@@ -31,20 +31,21 @@
 
   // ---------- Espécies (todas originais) ----------
   // atk/def = físico, mag/res = mágico (ataque e defesa especiais), spd = velocidade.
+  // female = chance de nascer fêmea (null = sem sexo). egg = grupos de ovo ('indefinido' = não põe ovo).
   const SPECIES = {
-    capi:       { name: 'Capi',       type: 'normal',   base: { hp: 60, atk: 45, def: 45, mag: 35, res: 45, spd: 40 },  xp: 40,  catch: 0.55, evolvesTo: 'capivarao', evolveLevel: 18 },
-    capivarao:  { name: 'Capivarão',  type: 'normal',   base: { hp: 95, atk: 70, def: 72, mag: 50, res: 70, spd: 48 },  xp: 110, catch: 0.2 },
-    pavio:      { name: 'Pavio',      type: 'fogo',     base: { hp: 48, atk: 60, def: 46, mag: 65, res: 50, spd: 60 },  xp: 62,  catch: 0.3,  evolvesTo: 'lampiao', evolveLevel: 16 },
-    lampiao:    { name: 'Lampião',    type: 'fogo',     base: { hp: 76, atk: 90, def: 70, mag: 95, res: 75, spd: 80 },  xp: 150, catch: 0.1 },
-    gotinha:    { name: 'Gotinha',    type: 'agua',     base: { hp: 50, atk: 48, def: 55, mag: 55, res: 60, spd: 50 },  xp: 62,  catch: 0.3,  evolvesTo: 'mare', evolveLevel: 16 },
-    mare:       { name: 'Maré',       type: 'agua',     base: { hp: 85, atk: 78, def: 82, mag: 85, res: 85, spd: 65 },  xp: 150, catch: 0.1 },
-    brotinho:   { name: 'Brotinho',   type: 'planta',   base: { hp: 52, atk: 50, def: 52, mag: 55, res: 55, spd: 45 },  xp: 62,  catch: 0.3,  evolvesTo: 'ipe', evolveLevel: 16 },
-    ipe:        { name: 'Ipê',        type: 'planta',   base: { hp: 88, atk: 80, def: 80, mag: 85, res: 85, spd: 60 },  xp: 150, catch: 0.1 },
-    vagalume:   { name: 'Vagalume',   type: 'eletrico', base: { hp: 40, atk: 55, def: 35, mag: 70, res: 40, spd: 85 },  xp: 55,  catch: 0.45 },
-    seixo:      { name: 'Seixo',      type: 'pedra',    base: { hp: 45, atk: 55, def: 80, mag: 25, res: 40, spd: 20 },  xp: 58,  catch: 0.45, evolvesTo: 'pedregulho', evolveLevel: 24 },
-    pedregulho: { name: 'Pedregulho', type: 'pedra',    base: { hp: 75, atk: 85, def: 115, mag: 40, res: 60, spd: 25 }, xp: 160, catch: 0.12 },
-    pipa:       { name: 'Pipa',       type: 'voador',   base: { hp: 42, atk: 50, def: 38, mag: 45, res: 40, spd: 80 },  xp: 50,  catch: 0.5 },
-    boitata:    { name: 'Boitatá',    type: 'fogo',     base: { hp: 90, atk: 110, def: 85, mag: 115, res: 90, spd: 95 }, xp: 280, catch: 0.04, legendary: true },
+    capi:       { name: 'Capi',       type: 'normal',   base: { hp: 60, atk: 45, def: 45, mag: 35, res: 45, spd: 40 },  xp: 40,  catch: 0.55, evolvesTo: 'capivarao', evolveLevel: 18, female: 0.5, egg: ['campo', 'agua'] },
+    capivarao:  { name: 'Capivarão',  type: 'normal',   base: { hp: 95, atk: 70, def: 72, mag: 50, res: 70, spd: 48 },  xp: 110, catch: 0.2, female: 0.5, egg: ['campo', 'agua'] },
+    pavio:      { name: 'Pavio',      type: 'fogo',     base: { hp: 48, atk: 60, def: 46, mag: 65, res: 50, spd: 60 },  xp: 62,  catch: 0.3,  evolvesTo: 'lampiao', evolveLevel: 16, female: 0.125, egg: ['campo'] },
+    lampiao:    { name: 'Lampião',    type: 'fogo',     base: { hp: 76, atk: 90, def: 70, mag: 95, res: 75, spd: 80 },  xp: 150, catch: 0.1, female: 0.125, egg: ['campo'] },
+    gotinha:    { name: 'Gotinha',    type: 'agua',     base: { hp: 50, atk: 48, def: 55, mag: 55, res: 60, spd: 50 },  xp: 62,  catch: 0.3,  evolvesTo: 'mare', evolveLevel: 16, female: 0.125, egg: ['agua'] },
+    mare:       { name: 'Maré',       type: 'agua',     base: { hp: 85, atk: 78, def: 82, mag: 85, res: 85, spd: 65 },  xp: 150, catch: 0.1, female: 0.125, egg: ['agua'] },
+    brotinho:   { name: 'Brotinho',   type: 'planta',   base: { hp: 52, atk: 50, def: 52, mag: 55, res: 55, spd: 45 },  xp: 62,  catch: 0.3,  evolvesTo: 'ipe', evolveLevel: 16, female: 0.125, egg: ['planta'] },
+    ipe:        { name: 'Ipê',        type: 'planta',   base: { hp: 88, atk: 80, def: 80, mag: 85, res: 85, spd: 60 },  xp: 150, catch: 0.1, female: 0.125, egg: ['planta'] },
+    vagalume:   { name: 'Vagalume',   type: 'eletrico', base: { hp: 40, atk: 55, def: 35, mag: 70, res: 40, spd: 85 },  xp: 55,  catch: 0.45, female: 0.5, egg: ['inseto'] },
+    seixo:      { name: 'Seixo',      type: 'pedra',    base: { hp: 45, atk: 55, def: 80, mag: 25, res: 40, spd: 20 },  xp: 58,  catch: 0.45, evolvesTo: 'pedregulho', evolveLevel: 24, female: 0.5, egg: ['mineral'] },
+    pedregulho: { name: 'Pedregulho', type: 'pedra',    base: { hp: 75, atk: 85, def: 115, mag: 40, res: 60, spd: 25 }, xp: 160, catch: 0.12, female: 0.5, egg: ['mineral'] },
+    pipa:       { name: 'Pipa',       type: 'voador',   base: { hp: 42, atk: 50, def: 38, mag: 45, res: 40, spd: 80 },  xp: 50,  catch: 0.5, female: 0.5, egg: ['voador'] },
+    boitata:    { name: 'Boitatá',    type: 'fogo',     base: { hp: 90, atk: 110, def: 85, mag: 115, res: 90, spd: 95 }, xp: 280, catch: 0.04, legendary: true, female: null, egg: ['indefinido'] },
   };
   const SPECIES_ORDER = ['pavio', 'lampiao', 'gotinha', 'mare', 'brotinho', 'ipe', 'capi', 'capivarao',
     'vagalume', 'seixo', 'pedregulho', 'pipa', 'boitata'];
@@ -138,7 +139,15 @@
     if (!c.effort) c.effort = Object.fromEntries(STAT_KEYS.map((k) => [k, effortFromIv(c.ivs[k])]));
     if (!NATURES[c.nature]) c.nature = NATURE_IDS[randInt(rng, 0, NATURE_IDS.length - 1)];
     if (c.held === undefined) c.held = null;
+    if (c.gender === undefined) c.gender = rollGender(c.species, rng);
     return c;
+  }
+
+  /** 'M', 'F' ou null (sem sexo), pela proporção da espécie. */
+  function rollGender(species, rng = Math.random) {
+    const f = SPECIES[species].female;
+    if (f == null) return null;
+    return rng() < f ? 'F' : 'M';
   }
 
   /** +10% / −10% / 1 conforme a natureza. */
@@ -186,6 +195,7 @@
       ensureGenes(c);
       c.hp = Math.round(maxHp(c) * ratio);
     }
+    ensureGenes(c); // campos mais novos (sexo) em saves antigos
     if (!Array.isArray(c.known)) c.known = [];
     for (const id of movesUpTo(c.species, c.level)) if (!c.known.includes(id)) c.known.push(id);
     if (!Array.isArray(c.moves) || !c.moves.length) c.moves = c.known.slice(-4);
@@ -614,6 +624,8 @@
       coins: 50,
       items: { capsula: 5, super: 0 },
       tms: {},                // MTs que o jogador tem (reutilizáveis)
+      daycare: { mons: [], egg: null, t: 0 },
+      eggs: [],
       zone: 'campina',
       dex: { seen: {}, caught: {} },
       settings: { autoCatch: true, autoMoves: true },
@@ -754,6 +766,127 @@
     return id;
   }
 
+  // ---------- Creche, ovos e eclosão ----------
+  // Dois bichos de sexos opostos que compartilham um grupo de ovo, deixados na creche, às vezes
+  // produzem um ovo. O filhote é da forma base da mãe, herda 3 IVs dos pais (5 com Laço do Destino)
+  // e a natureza de quem segura a Pedra Eterna. O ovo choca com o tempo de jogo.
+  const DAYCARE_MAX = 2;
+  const EGGS_MAX = 4;
+  const EGG_CHECK_S = 60; // a cada quanto tempo a creche tenta fazer um ovo
+
+  function baseSpecies(sp) {
+    for (let guard = 0; guard < 5; guard++) {
+      const prev = Object.keys(SPECIES).find((k) => SPECIES[k].evolvesTo === sp);
+      if (!prev) break;
+      sp = prev;
+    }
+    return sp;
+  }
+
+  /** Chance de ovo por tentativa (0 = incompatível). Mesma espécie se dá melhor. */
+  function breedChance(a, b) {
+    if (!a || !b || !a.gender || !b.gender || a.gender === b.gender) return 0;
+    const ga = SPECIES[a.species].egg, gb = SPECIES[b.species].egg;
+    if (ga.includes('indefinido') || gb.includes('indefinido')) return 0;
+    if (!ga.some((g) => gb.includes(g))) return 0;
+    return baseSpecies(a.species) === baseSpecies(b.species) ? 0.5 : 0.25;
+  }
+
+  function breedMood(chance) {
+    if (chance >= 0.5) return 'Os dois parecem se dar muito bem.';
+    if (chance > 0) return 'Os dois se dão bem.';
+    return 'Os dois preferem brincar com outros.';
+  }
+
+  /** Tempo (s) pra chocar: espécies mais raras demoram mais. */
+  const hatchTime = (sp) => Math.round(300 + (1 - SPECIES[sp].catch) * 900);
+
+  function makeEgg(a, b, rng = Math.random) {
+    const mother = a.gender === 'F' ? a : b;
+    const species = baseSpecies(mother.species);
+    const knot = [a, b].some((p) => p.held === 'laco_destino');
+    const stats = [...STAT_KEYS].sort(() => rng() - 0.5).slice(0, knot ? 5 : 3);
+    const ivs = Object.fromEntries(STAT_KEYS.map((k) => [k, randInt(rng, 0, 31)]));
+    for (const k of stats) ivs[k] = (rng() < 0.5 ? a : b).ivs[k];
+    const stone = [a, b].filter((p) => p.held === 'pedra_eterna');
+    const nature = stone.length ? stone[randInt(rng, 0, stone.length - 1)].nature : NATURE_IDS[randInt(rng, 0, NATURE_IDS.length - 1)];
+    return { id: uid(rng), species, ivs, nature, shiny: rng() < SHINY_CHANCE, progress: 0, need: hatchTime(species), inherited: stats };
+  }
+
+  function hatchEgg(state, egg, rng = Math.random) {
+    const c = { uid: uid(rng), species: egg.species, level: 1, xp: 0, shiny: egg.shiny, ivs: egg.ivs, nature: egg.nature };
+    ensureGenes(c, rng);
+    c.hp = maxHp(c);
+    ensureMoves(c);
+    if (state.team.length < TEAM_MAX) state.team.push(c);
+    else state.box.push(c);
+    state.dex.seen[c.species] = true;
+    state.dex.caught[c.species] = true;
+    state.stats.hatched = (state.stats.hatched || 0) + 1;
+    return c;
+  }
+
+  function ensureBreeding(state) {
+    if (!state.daycare) state.daycare = { mons: [], egg: null, t: 0 };
+    if (!state.eggs) state.eggs = [];
+  }
+
+  /** Avança creche e ovos em `dt` segundos. Devolve eventos: {type:'egg'} e {type:'hatch', creature}. */
+  function tickBreeding(state, dt, rng = Math.random) {
+    ensureBreeding(state);
+    const ev = [];
+    const dc = state.daycare;
+    const [a, b] = dc.mons;
+    const chance = breedChance(a, b);
+    if (chance && !dc.egg) {
+      dc.t += dt;
+      while (dc.t >= EGG_CHECK_S && !dc.egg) {
+        dc.t -= EGG_CHECK_S;
+        if (rng() < chance) { dc.egg = makeEgg(a, b, rng); ev.push({ type: 'egg', species: dc.egg.species }); }
+      }
+    } else if (!chance) dc.t = 0;
+    if (dc.egg && state.eggs.length < EGGS_MAX) { // pega o ovo sozinho quando há espaço
+      state.eggs.push(dc.egg);
+      dc.egg = null;
+    }
+    for (const egg of [...state.eggs]) {
+      egg.progress = Math.min(egg.need, egg.progress + dt);
+      if (egg.progress >= egg.need) {
+        state.eggs.splice(state.eggs.indexOf(egg), 1);
+        ev.push({ type: 'hatch', creature: hatchEgg(state, egg, rng) });
+      }
+    }
+    return ev;
+  }
+
+  /** Deixa na creche (sai da equipe/caixa). A equipe precisa ficar com alguém. */
+  function daycarePut(state, cUid) {
+    ensureBreeding(state);
+    if (state.daycare.mons.length >= DAYCARE_MAX) return false;
+    const fromTeam = state.team.findIndex((c) => c.uid === cUid);
+    const fromBox = state.box.findIndex((c) => c.uid === cUid);
+    if (fromTeam < 0 && fromBox < 0) return false;
+    if (fromTeam >= 0 && state.team.length <= 1) return false;
+    const [c] = fromTeam >= 0 ? state.team.splice(fromTeam, 1) : state.box.splice(fromBox, 1);
+    afterBattle(c);
+    c.hp = maxHp(c);
+    state.daycare.mons.push(c);
+    if (state.lead === c.uid) state.lead = state.team[0].uid;
+    state.daycare.t = 0;
+    return true;
+  }
+
+  function daycareTake(state, cUid) {
+    ensureBreeding(state);
+    const i = state.daycare.mons.findIndex((c) => c.uid === cUid);
+    if (i < 0) return false;
+    const [c] = state.daycare.mons.splice(i, 1);
+    if (state.team.length < TEAM_MAX) state.team.push(c);
+    else state.box.push(c);
+    state.daycare.t = 0;
+    return true;
+  }
+
   /** Dá um item pra criatura segurar (null = tirar). O item anterior volta pra mochila. */
   function hold(state, c, item) {
     if (item && (!HELD[item] || !(state.items[item] > 0))) return false;
@@ -798,11 +931,17 @@
     lead.hp = maxHp(lead);
     afterBattle(lead);
     for (const c of state.team) restorePp(c);
-    return { seconds: s, battles, xp, coins, levels: lead.level - startLevel, evolutions };
+    const hatched = [];
+    for (let t = 0; t < s; t += EGG_CHECK_S) {
+      tickBreeding(state, Math.min(EGG_CHECK_S, s - t), rng).forEach((e) => { if (e.type === 'hatch') hatched.push(e.creature); });
+    }
+    return { seconds: s, battles, xp, coins, levels: lead.level - startLevel, evolutions, hatched };
   }
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
+    DAYCARE_MAX, EGGS_MAX, EGG_CHECK_S, rollGender, baseSpecies, breedChance, breedMood, hatchTime, makeEgg,
+    hatchEgg, ensureBreeding, tickBreeding, daycarePut, daycareTake,
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
     NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,

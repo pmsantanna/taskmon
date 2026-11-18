@@ -48,6 +48,7 @@
   //   berryHeal  recupera essa fração do HP ao ficar com menos da metade (once)
   //   berryCure  cura status assim que pega um (once)
   //   xpMult / coinMult  fora da batalha
+  //   (Pedra Eterna e Laço do Destino só valem na creche: veja makeEgg em game.js)
   const HELD = {
     lente_mira:   { name: 'Lente de Mira', desc: 'Aumenta a chance de crítico (+1 estágio).', price: 250, hue: 0, crit: 1 },
     lupa:         { name: 'Lupa', desc: 'Golpes de quem segura têm 10% mais precisão.', price: 200, hue: 40, accMult: 1.1 },
@@ -62,6 +63,8 @@
     baga_cura:    { name: 'Baga Curativa', desc: 'Cura queimadura, veneno, paralisia ou sono (1× por luta).', price: 150, hue: 140, berryCure: true },
     ovo_sorte:    { name: 'Ovo da Sorte', desc: 'Quem segura ganha 50% a mais de XP.', price: 600, hue: 50, xpMult: 1.5 },
     moeda_sorte:  { name: 'Moeda da Sorte', desc: 'Dobra as moedas quando o líder segura.', price: 600, hue: 45, coinMult: 2 },
+    pedra_eterna: { name: 'Pedra Eterna', desc: 'Na creche, passa a natureza de quem segura pro filhote.', price: 500, hue: 220 },
+    laco_destino: { name: 'Laço do Destino', desc: 'Na creche, o filhote herda 5 IVs dos pais em vez de 3.', price: 900, hue: 340 },
     lenco_seda:   { name: 'Lenço de Seda', desc: 'Golpes Normal causam 20% a mais.', price: 180, hue: 0, typeBoost: { type: 'normal', mult: 1.2 } },
     carvao:       { name: 'Carvão', desc: 'Golpes de Fogo causam 20% a mais.', price: 180, hue: 15, typeBoost: { type: 'fogo', mult: 1.2 } },
     gota_mistica: { name: 'Gota Mística', desc: 'Golpes de Água causam 20% a mais.', price: 180, hue: 210, typeBoost: { type: 'agua', mult: 1.2 } },

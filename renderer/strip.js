@@ -69,7 +69,8 @@
   const saved = await bridge.load();
   let state = saved && saved.version === 1 ? { ...G.newGame(), ...saved } : G.newGame();
   // saves antigos não tinham golpes
-  [...state.team, ...state.box].forEach((c) => G.ensureMoves(c));
+  G.ensureBreeding(state);
+  [...state.team, ...state.box, ...state.daycare.mons].forEach((c) => G.ensureMoves(c));
   await A.load();
   layout();
 
@@ -123,6 +124,7 @@
       const h = Math.floor(summary.seconds / 3600), m = Math.round((summary.seconds % 3600) / 60);
       toast(`Enquanto você estava fora (${h ? h + 'h ' : ''}${m}min): +${summary.xp} XP, +${summary.coins} 🪙`, 6);
       summary.evolutions.forEach((e) => toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4));
+      (summary.hatched || []).forEach((c) => toast(`Enquanto você estava fora, nasceu um ${name(c)}!`, 4));
     }
   } else {
     bridge.openPanel();
@@ -380,6 +382,17 @@
     const max = G.maxHp(lead);
     sim.t += dt;
 
+    // creche e ovos andam com o tempo de jogo
+    for (const e of G.tickBreeding(state, dt)) {
+      if (e.type === 'egg') toast('A creche achou um ovo! 🥚', 3.5);
+      if (e.type === 'hatch') {
+        toast(`O ovo chocou! Nasceu um ${name(e.creature)}${e.creature.gender ? (e.creature.gender === 'F' ? ' ♀' : ' ♂') : ''}!`, 4);
+        sim.flash = 1;
+      }
+      save();
+      sync();
+    }
+
     switch (sim.phase) {
       case 'walk':
         sim.scroll += dt * 26;
@@ -606,7 +619,7 @@
       sprite(w.species, w.shiny, wx, y, { flip: true, alpha: sim.wildAlpha * blinkAlpha('wild') });
       if (['appear', 'fight', 'throw'].includes(sim.phase)) {
         const max = G.maxHp(w);
-        const label = `${G.SPECIES[w.species].name} ${w.level}`;
+        const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''} ${w.level}`;
         text(label, wx + S / 2, y - 12, { size: 9, align: 'center', color: w.shiny ? '#fde047' : '#e7e5e4' });
         if (w.status) statusBadge(w.status, Math.round(wx + S / 2 + 18), y - 5);
         bar(Math.round(wx + S / 2 - 15), y - 6, 30, 3, w.hp / max, hpColor(w.hp / max));
@@ -735,6 +748,17 @@
         else toast(`${nm} aprendeu ${G.MOVES[r.move].name} (guardado, troque em Golpes)`, 3.5);
         break;
       }
+      case 'daycarePut': {
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        if (c && G.daycarePut(state, cmd.uid)) {
+          toast(`${G.SPECIES[c.species].name} foi pra creche`);
+          if (!G.getLead(state) || sim.wild) endBattle();
+        } else toast('A creche está cheia (ou a equipe ficaria vazia)');
+        break;
+      }
+      case 'daycareTake':
+        if (G.daycareTake(state, cmd.uid)) toast('Buscou na creche');
+        break;
       case 'hold': {
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
         if (c && G.hold(state, c, cmd.item || null)) {
