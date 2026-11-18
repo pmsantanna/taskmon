@@ -256,6 +256,7 @@
     const lead = G.getLead(state);
     const res = G.rewardWin(state, sim.wild);
     floater(`+${res.xp} XP`, leadX + S / 2, groundY - S / 2, '#67e8f9');
+    if (res.drop) toast(`O ${G.SPECIES[sim.wild.species].name} deixou cair: ${G.SHOP[res.drop].name}!`, 3);
     handleXpEvents(res.events, lead);
     setPhase('win');
     save();
@@ -688,6 +689,13 @@
       case 'autoCatch':
         state.settings.autoCatch = !!cmd.value;
         break;
+      case 'grit': {
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        const used = c && G.useGrit(state, c, cmd.stat);
+        if (used) toast(`${G.SPECIES[c.species].name}: ${G.STAT_LABEL[cmd.stat] || 'HP'} subiu pro nível de esforço ${c.effort[cmd.stat]}!`);
+        else toast('Sem o item de esforço certo pra esse nível');
+        break;
+      }
       case 'autoMoves':
         state.settings.autoMoves = !!cmd.value;
         break;

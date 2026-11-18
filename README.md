@@ -50,7 +50,8 @@ Turnos no estilo clássico: os dois escolhem um golpe, quem tem **prioridade** a
 empatando, o mais **rápido**. Os dois lados lutam sozinhos (uma IA pontua os golpes).
 
 - **Físico** (⚔) usa Ataque × Defesa, **Mágico** (✦) usa Magia × Resistência, **Status** (◐) não causa dano.
-- Dano: `((2·Nv/5+2)·Poder·A/D)/50+2`, × 1,5 se o golpe é do tipo da criatura, × tipo, × 1,5 no crítico, × 0,85–1.
+- Dano: `((2·Nv/5+2)·Poder·A/D)/50+2`, × 1,5 se o golpe é do tipo da criatura, × tipo (2× super efetivo,
+  0,5× pouco efetivo), × 1,5 no crítico, × 0,85–1.
 - **Estágios** de −6 a +6 em Ataque, Defesa, Magia, Resistência, Velocidade, Precisão e Evasão. Zeram no fim da luta.
 - **Status**: queimadura (perde 1/16 do HP por turno, golpe físico causa metade), veneno (perde 1/8),
   paralisia (metade da velocidade, 25% de chance de não agir), sono (1 a 3 turnos sem agir).
@@ -59,6 +60,16 @@ empatando, o mais **rápido**. Os dois lados lutam sozinhos (uma IA pontua os go
 - Com 4 golpes e um novo aprendido, troca o mais fraco sozinho (dá pra desligar em Ajustes).
 
 Golpes e quem aprende o quê ficam em `shared/moves.js`.
+
+### IVs e níveis de esforço (como no Legends: Arceus)
+
+- **IV**: 0–31 por atributo, sorteado quando a criatura aparece, nunca muda. No painel (botão
+  **Atributos**) aparece como a avaliação do juiz: Nada bom, Razoável, Bom, Muito bom, Fantástico, Perfeito.
+- **Nível de esforço**: 0–10 por atributo, no lugar dos EVs. Começa conforme o IV (20+ → 1, 26+ → 2,
+  31 → 3) e sobe com os itens de esforço da loja (ou que os selvagens às vezes deixam cair):
+  Pó (0–2), Cascalho (3–5), Pedrisco (6–8) e Rocha (9 → 10).
+- Atributo = `⌊(2·Base + IV)·Nv/100⌋ + 5` (HP: `+ Nv + 10`) + bônus de esforço
+  `⌊(round(√Base × M) + Nv) / 2,5⌋`, com M = 0, 2, 3, 4, 7, 8, 9, 14, 15, 16, 25 do nível 0 ao 10.
 
 ## Sprites e tiles customizados
 

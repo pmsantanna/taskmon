@@ -13,6 +13,7 @@
   let lastKey = '';
   let heroKey = '';
   let editing = null; // uid da criatura com o editor de golpes aberto
+  let genesOf = null; // uid da criatura com o quadro de IV/esforço aberto
   let draft = [];     // golpes marcados no editor
 
   const TABS = [
@@ -75,6 +76,31 @@
       parts.push(`${e.chance ? Math.round(e.chance * 100) + '%: ' : ''}${st} (${who})`);
     }
     return parts.join(' · ');
+  }
+
+  /** Quadro de atributos: valor, IV (avaliação do juiz) e nível de esforço com botão de item. */
+  function genesBox(c) {
+    const st = G.stats(c);
+    const rows = G.STAT_KEYS.map((k) => {
+      const iv = c.ivs[k], ef = c.effort[k];
+      const item = G.gritFor(ef);
+      const have = item ? state.items[item] || 0 : 0;
+      const pips = Array.from({ length: G.EFFORT_MAX }, (_, i) => `<i class="${i < ef ? 'on' : ''}"></i>`).join('');
+      const rating = G.ivRating(iv);
+      return `<div class="gene">
+        <span class="gk">${G.STAT_LABEL[k]}</span>
+        <b class="gv">${st[k]}</b>
+        <span class="iv r${iv >= 31 ? 5 : iv >= 30 ? 4 : iv >= 26 ? 3 : iv >= 16 ? 2 : iv >= 1 ? 1 : 0}" title="IV ${iv}/31">${rating}</span>
+        <span class="pips" title="Nível de esforço ${ef}/${G.EFFORT_MAX}">${pips}</span>
+        ${item
+          ? `<button class="btn mini" data-cmd="grit" data-uid="${c.uid}" data-stat="${k}" ${have ? '' : 'disabled'} title="Usar ${esc(G.SHOP[item].name)} (você tem ${have})">${spr(item, { item: true, size: 16 })}+</button>`
+          : '<span class="tag">MÁX</span>'}
+      </div>`;
+    }).join('');
+    return `<div class="editor genes">
+      <div class="muted">Valor · IV (avaliação) · nível de esforço. Os itens de esforço vêm da loja e de batalhas.</div>
+      ${rows}
+    </div>`;
   }
 
   function moveEditor(c) {
@@ -227,10 +253,12 @@
         <div class="actions">
           ${isLead ? '' : `<button class="btn primary" data-cmd="setLead" data-uid="${c.uid}">★ Líder</button>`}
           <button class="btn" data-cmd="toBox" data-uid="${c.uid}" ${state.team.length <= 1 ? 'disabled' : ''}>→ Caixa</button>
+          <button class="btn" data-cmd="genes" data-uid="${c.uid}">Atributos</button>
           <button class="btn" data-cmd="editMoves" data-uid="${c.uid}">Golpes${c.known.length > c.moves.length ? ` <span class="new">${c.known.length - c.moves.length}</span>` : ''}</button>
         </div>
         <div class="moves">${c.moves.map((id) => moveChip(id, c)).join('')}</div>
         ${editing === c.uid ? moveEditor(c) : ''}
+        ${genesOf === c.uid ? genesBox(c) : ''}
       </div>`;
   }
 
@@ -273,7 +301,9 @@
         ${Object.entries(G.SHOP).map(([id, it]) => `
           <div class="row">
             ${spr(id, { item: true, size: 32 })}
-            <span class="label"><b>${esc(it.name)}</b><span class="muted">${it.price} 🪙 · ${it.mult}× chance · você tem ${state.items[id] || 0}</span></span>
+            <span class="label"><b>${esc(it.name)}</b><span class="muted">${it.price} 🪙 · ${it.grit
+              ? `esforço ${it.grit[0] === it.grit[1] ? it.grit[0] : `${it.grit[0]}–${it.grit[1]}`} → +1`
+              : `${it.mult}× chance`} · você tem ${state.items[id] || 0}</span></span>
             <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
             <button class="btn" data-cmd="buy" data-item="${id}" data-qty="5" ${state.coins < it.price * 5 ? 'disabled' : ''}>+5</button>
           </div>`).join('')}
@@ -377,8 +407,8 @@
   function onState(s) {
     state = s;
     const key = JSON.stringify({
-      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft,
-      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status]),
+      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf,
+      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort]),
     });
     if (key !== lastKey) {
       lastKey = key;
@@ -426,6 +456,8 @@
         rerender();
         break;
       }
+      case 'genes': genesOf = genesOf === d.uid ? null : d.uid; rerender(); break;
+      case 'grit': send({ type: 'grit', uid: d.uid, stat: d.stat }); break;
       case 'saveMoves': send({ type: 'setMoves', uid: d.uid, moves: draft }); editing = null; rerender(); break;
       case 'cancelMoves': editing = null; rerender(); break;
       case 'openSprites': bridge.openSpritesFolder(); break;

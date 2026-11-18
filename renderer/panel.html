@@ -132,6 +132,23 @@
     .log { display: grid; gap: 1px; font-size: 11.5px; color: var(--dim); padding: 6px 8px; border-radius: 7px; background: var(--bg2); }
     .log div:last-child { color: var(--fg); }
     .log[hidden] { display: none; }
+
+    /* ---------- IV / esforço ---------- */
+    .genes { gap: 4px; }
+    .gene { display: grid; grid-template-columns: 84px 34px 82px 1fr auto; gap: 8px; align-items: center; font-size: 12px; min-height: 24px; }
+    .gene .gk { color: var(--dim); }
+    .gene .gv { text-align: right; font-variant-numeric: tabular-nums; }
+    .iv { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 99px; text-align: center; background: var(--card2); color: var(--dim); cursor: help; }
+    .iv.r2 { color: #a3e635; } .iv.r3 { color: #4ade80; } .iv.r4 { color: #38bdf8; }
+    .iv.r5 { color: #0c0a09; background: var(--gold); }
+    .iv.r0 { color: var(--danger); }
+    .pips { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; }
+    .pips i { height: 8px; border-radius: 2px; background: var(--card2); box-shadow: inset 0 0 0 1px var(--line); }
+    .pips i.on { background: var(--accent); box-shadow: none; }
+    .pips i.on:nth-child(n+4) { background: #38bdf8; }
+    .pips i.on:nth-child(n+7) { background: #a78bfa; }
+    .pips i.on:nth-child(10) { background: var(--gold); }
+    button.btn.mini { padding: 1px 6px; display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
     .bars { display: grid; gap: 3px; margin-top: 6px; }
     .bar { height: 5px; background: var(--bg2); border-radius: 3px; overflow: hidden; }
     .bar > i { display: block; height: 100%; border-radius: 3px; transition: width .4s ease; }

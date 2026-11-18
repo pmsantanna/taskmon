@@ -59,7 +59,29 @@
   const SHOP = {
     capsula: { name: 'Cápsula', price: 20, mult: 1 },
     super:   { name: 'Super cápsula', price: 60, mult: 1.8 },
+    // Itens de esforço: +1 nível de esforço, cada um numa faixa (como no Legends: Arceus).
+    esforco1: { name: 'Pó de Esforço', price: 40, grit: [0, 2] },
+    esforco2: { name: 'Cascalho de Esforço', price: 120, grit: [3, 5] },
+    esforco3: { name: 'Pedrisco de Esforço', price: 300, grit: [6, 8] },
+    esforco4: { name: 'Rocha de Esforço', price: 800, grit: [9, 9] },
   };
+  const GRIT_ITEMS = ['esforco1', 'esforco2', 'esforco3', 'esforco4'];
+
+  /** Qual item de esforço serve pro nível atual (null se já está no máximo). */
+  const gritFor = (effort) => (effort >= EFFORT_MAX ? null : GRIT_ITEMS.find((id) => effort >= SHOP[id].grit[0] && effort <= SHOP[id].grit[1]));
+
+  /** Usa um item de esforço num atributo. Devolve o id do item gasto ou null. */
+  function useGrit(state, c, stat) {
+    if (!STAT_KEYS.includes(stat)) return null;
+    ensureGenes(c);
+    const item = gritFor(c.effort[stat]);
+    if (!item || !(state.items[item] > 0)) return null;
+    const before = maxHp(c);
+    state.items[item]--;
+    c.effort[stat]++;
+    if (stat === 'hp') c.hp += maxHp(c) - before;
+    return item;
+  }
 
   const TEAM_MAX = 6;
   const SHINY_CHANCE = 1 / 256;
@@ -81,12 +103,46 @@
   }
 
   // ---------- Criaturas ----------
+  // ---------- IVs e níveis de esforço (sistema do Legends: Arceus) ----------
+  // IV: 0–31 por atributo, sorteado ao nascer, nunca muda.
+  // Nível de esforço (NE): 0–10 por atributo, sobe com os itens de esforço. Substitui os EVs.
+  // Ao ser criada, a criatura já começa com NE conforme o IV (20+ → 1, 26+ → 2, 31 → 3).
+  const STAT_KEYS = ['hp', 'atk', 'def', 'mag', 'res', 'spd'];
+  const EFFORT_MULT = [0, 2, 3, 4, 7, 8, 9, 14, 15, 16, 25];
+  const EFFORT_MAX = 10;
+
+  const effortFromIv = (iv) => (iv >= 31 ? 3 : iv >= 26 ? 2 : iv >= 20 ? 1 : 0);
+
+  /** Avaliação do IV, como o juiz do jogo. */
+  function ivRating(iv) {
+    if (iv >= 31) return 'Perfeito';
+    if (iv >= 30) return 'Fantástico';
+    if (iv >= 26) return 'Muito bom';
+    if (iv >= 16) return 'Bom';
+    if (iv >= 1) return 'Razoável';
+    return 'Nada bom';
+  }
+
+  /** Bônus do nível de esforço: ⌊(round(√Base × multiplicador) + Nível) / 2,5⌋. */
+  function effortBonus(base, effort, level) {
+    return Math.floor((Math.round(Math.sqrt(base) * EFFORT_MULT[effort || 0]) + level) / 2.5);
+  }
+
+  /** Garante IVs e níveis de esforço (criaturas novas e saves antigos). */
+  function ensureGenes(c, rng = Math.random) {
+    if (!c.ivs) c.ivs = Object.fromEntries(STAT_KEYS.map((k) => [k, randInt(rng, 0, 31)]));
+    if (!c.effort) c.effort = Object.fromEntries(STAT_KEYS.map((k) => [k, effortFromIv(c.ivs[k])]));
+    return c;
+  }
+
   function stats(c) {
     const b = SPECIES[c.species].base;
-    const s = (v) => Math.floor((v * 2 * c.level) / 100) + 5;
+    const L = c.level;
+    const iv = c.ivs || {}, ef = c.effort || {};
+    const s = (k) => Math.floor(((2 * b[k] + (iv[k] || 0)) * L) / 100) + 5 + effortBonus(b[k], ef[k], L);
     return {
-      hp: Math.floor((b.hp * 2 * c.level) / 100) + c.level + 10,
-      atk: s(b.atk), def: s(b.def), mag: s(b.mag), res: s(b.res), spd: s(b.spd),
+      hp: Math.floor(((2 * b.hp + (iv.hp || 0)) * L) / 100) + L + 10 + effortBonus(b.hp, ef.hp, L),
+      atk: s('atk'), def: s('def'), mag: s('mag'), res: s('res'), spd: s('spd'),
     };
   }
 
@@ -95,6 +151,7 @@
 
   function createCreature(species, level, rng = Math.random) {
     const c = { uid: uid(rng), species, level, xp: 0, shiny: rng() < SHINY_CHANCE };
+    ensureGenes(c, rng);
     c.hp = maxHp(c);
     ensureMoves(c);
     return c;
@@ -110,6 +167,11 @@
 
   /** Garante known/moves/pp (criaturas novas e saves antigos). Como no original: os 4 últimos aprendidos. */
   function ensureMoves(c) {
+    if (!c.ivs) { // save antigo: sorteia os genes mantendo a proporção do HP
+      const ratio = c.hp / maxHp(c);
+      ensureGenes(c);
+      c.hp = Math.round(maxHp(c) * ratio);
+    }
     if (!Array.isArray(c.known)) c.known = [];
     for (const id of movesUpTo(c.species, c.level)) if (!c.known.includes(id)) c.known.push(id);
     if (!Array.isArray(c.moves) || !c.moves.length) c.moves = c.known.slice(-4);
@@ -168,11 +230,9 @@
     for (const id of c.moves) c.pp[id] = Math.min(MOVES[id].pp, (c.pp[id] ?? 0) + amount);
   }
 
-  // Na tabela, 2 = "super efetivo" e 0.5 = "pouco efetivo". Aqui suavizamos pra 1.5× / 0.7×:
-  // num idle você não escolhe golpes, então fraquezas cheias seriam punitivas demais.
+  // Igual ao original: 2× super efetivo, 0.5× pouco efetivo.
   function typeMult(attType, defType) {
-    const m = (EFFECT[attType] && EFFECT[attType][defType]) ?? 1;
-    return m > 1 ? 1.5 : m < 1 ? 0.7 : 1;
+    return (EFFECT[attType] && EFFECT[attType][defType]) ?? 1;
   }
 
   // ---------- Batalha (estilo original: categoria, estágios, status, prioridade) ----------
@@ -494,7 +554,14 @@
     state.coins += coins;
     state.stats.battles++;
     state.stats.wins++;
-    return { xp, coins, events };
+    // às vezes o selvagem deixa um item de esforço (mais raro e melhor em nível alto)
+    let drop = null;
+    if (rng() < 0.12) {
+      const r = rng() * (wild.level / 12);
+      drop = r > 2.6 ? 'esforco4' : r > 1.6 ? 'esforco3' : r > 0.7 ? 'esforco2' : 'esforco1';
+      state.items[drop] = (state.items[drop] || 0) + 1;
+    }
+    return { xp, coins, events, drop };
   }
 
   function buy(state, item, qty = 1) {
@@ -547,6 +614,7 @@
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
+    STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
     MOVES, LEARNSETS, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
     stats, maxHp, xpToNext, createCreature, typeMult, gainXp, xpReward, coinReward,
     movesUpTo, ensureMoves, learnMove, setMoves, restorePp, hasPp,

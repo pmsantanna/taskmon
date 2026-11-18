@@ -260,6 +260,24 @@
       ],
       pal: { k: K, a: '#14b8a6', w: '#f5f5f4' },
     },
+    // Itens de esforço: montinho de areia/pedra (a cor muda por nível no painel/faixa).
+    _grit: {
+      rows: [
+        '............',
+        '............',
+        '............',
+        '.....kk.....',
+        '....kabk....',
+        '...kaabak...',
+        '..kabaaabk..',
+        '..kaaabaak..',
+        '.kabaaaabak.',
+        '.kaaabaaaak.',
+        'kkkkkkkkkkkk',
+        '............',
+      ],
+      pal: { k: K, a: '#d6b98c', b: '#f5e6c8' },
+    },
   };
 
   const SIZE = 12;

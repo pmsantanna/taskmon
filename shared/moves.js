@@ -29,7 +29,7 @@
     sono:       { label: 'Dormindo', short: 'SON', color: '#94a3b8' },
   };
 
-  const STAT_LABEL = { atk: 'Ataque', def: 'Defesa', mag: 'Magia', res: 'Resistência', spd: 'Velocidade', acc: 'Precisão', eva: 'Evasão' };
+  const STAT_LABEL = { hp: 'HP', atk: 'Ataque', def: 'Defesa', mag: 'Magia', res: 'Resistência', spd: 'Velocidade', acc: 'Precisão', eva: 'Evasão' };
 
   const MOVES = {
     // ----- Normal -----
