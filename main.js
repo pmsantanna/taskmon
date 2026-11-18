@@ -151,6 +151,20 @@ function createStrip() {
   strip.on('minimize', () => { strip.restore(); reassertTop(); });
 
   setInterval(watchdog, 750);
+  setInterval(trackCursor, 60);
+}
+
+// Diz pra faixa onde o cursor está (coordenadas da janela) enquanto ele estiver em cima dela,
+// e avisa uma vez quando sai. A faixa decide se o clique é dela ou atravessa pra barra.
+let cursorInside = false;
+function trackCursor() {
+  if (!alive(strip)) return;
+  const p = screen.getCursorScreenPoint();
+  const b = strip.getBounds();
+  const inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+  if (inside) strip.webContents.send('strip:cursor', { x: p.x - b.x, y: p.y - b.y });
+  else if (cursorInside) strip.webContents.send('strip:cursor', null);
+  cursorInside = inside;
 }
 
 function panelBounds() {

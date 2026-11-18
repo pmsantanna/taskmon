@@ -645,6 +645,7 @@
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    if (cursor) hover(cursor.x, cursor.y); // a cena muda embaixo do cursor parado (ex.: a pergunta aparece)
     if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
     layout();
     const lead = G.getLead(state);
@@ -766,21 +767,30 @@
     return null;
   }
 
-  window.addEventListener('mousemove', (e) => {
-    const hit = hitTest(e.clientX, e.clientY);
+  // Liga/desliga o "clique atravessa" conforme o que está embaixo do cursor.
+  let cursor = null; // última posição conhecida (pra reavaliar quando a tela muda embaixo do mouse)
+  function hover(x, y) {
+    cursor = x == null ? null : { x, y };
+    const hit = cursor ? hitTest(x, y) : null;
     canvas.style.cursor = hit ? 'pointer' : 'default';
     if (!!hit === clickThrough) {
       clickThrough = !hit;
       bridge.setClickThrough(clickThrough);
     }
-  });
+  }
 
-  document.addEventListener('mouseleave', () => {
-    clickThrough = true;
-    bridge.setClickThrough(true);
-  });
+  window.addEventListener('mousemove', (e) => hover(e.clientX, e.clientY));
 
-  window.addEventListener('click', (e) => {
+  // No Electron, o main informa a posição do cursor (a cada 60 ms, só com ele em cima da faixa).
+  // Não dá pra confiar no 'mouseleave': no Windows ele dispara à toa quando a janela troca o modo
+  // de ignorar o mouse ou é reposicionada no topo, e o clique acabava atravessando pra barra.
+  bridge.onCursor((p) => (p ? hover(p.x, p.y) : hover(null)));
+  if (bridge.isFallback) document.addEventListener('mouseleave', () => hover(null));
+
+  // Age no "apertar" (mousedown), não no click: se o modo de clique mudar entre apertar e
+  // soltar, o click se perde.
+  window.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     const hit = hitTest(e.clientX, e.clientY);
     if (hit === 'hud' || hit === 'lead') bridge.openPanel();
     if (hit === 'askYes') answerCatch(true);
