@@ -715,6 +715,16 @@
 
     drawHud(lead);
 
+    if (debug && debug.on) {
+      const hit = cursor ? hitTest(cursor.x, cursor.y) : null;
+      const lines = [
+        `mouse ${cursor ? `${Math.round(cursor.x)},${Math.round(cursor.y)}` : '—'} ${hit || '-'} · ${clickThrough ? 'atravessa' : 'PEGA'} · dpr ${dpr}`,
+        `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · janela ${debug.b ? `${debug.b.width}×${debug.b.height}` : ''} · clique ${debug.lastClick || '—'}`,
+      ];
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(HUD_W, H - 22, W - HUD_W, 22);
+      lines.forEach((l, i) => text(l, HUD_W + 4, H - 16 + i * 10, { size: 8, color: '#a7f3d0' }));
+    }
     // pergunta de captura (no lugar dos avisos enquanto espera resposta)
     sim.askRects = null;
     if (sim.phase === 'prompt' && sim.wild) {
@@ -768,7 +778,10 @@
   }
 
   // Liga/desliga o "clique atravessa" conforme o que está embaixo do cursor.
-  let cursor = null; // última posição conhecida (pra reavaliar quando a tela muda embaixo do mouse)
+  // A posição vem SÓ do mousemove da página (coordenadas exatas). A posição do sistema que o main
+  // consulta pode vir deslocada com escala de DPI, e misturar as duas fazia o clique atravessar.
+  let cursor = null; // último mousemove (pra reavaliar quando a cena muda embaixo do mouse parado)
+  let lastMove = 0;
   function hover(x, y) {
     cursor = x == null ? null : { x, y };
     const hit = cursor ? hitTest(x, y) : null;
@@ -779,19 +792,21 @@
     }
   }
 
-  window.addEventListener('mousemove', (e) => hover(e.clientX, e.clientY));
+  window.addEventListener('mousemove', (e) => { lastMove = performance.now(); hover(e.clientX, e.clientY); });
 
-  // No Electron, o main informa a posição do cursor (a cada 60 ms, só com ele em cima da faixa).
   // Não dá pra confiar no 'mouseleave': no Windows ele dispara à toa quando a janela troca o modo
-  // de ignorar o mouse ou é reposicionada no topo, e o clique acabava atravessando pra barra.
-  bridge.onCursor((p) => (p ? hover(p.x, p.y) : hover(null)));
+  // de ignorar o mouse ou é reposicionada no topo. Quem avisa que o mouse saiu é o main (null),
+  // e só vale se não houve mousemove recente (o mousemove sempre tem a palavra final).
+  bridge.onCursor((p) => { if (!p && performance.now() - lastMove > 300) hover(null); });
   if (bridge.isFallback) document.addEventListener('mouseleave', () => hover(null));
 
-  // Age no "apertar" (mousedown), não no click: se o modo de clique mudar entre apertar e
-  // soltar, o click se perde.
-  window.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
+  // Diagnóstico (bandeja → "Diagnóstico do mouse"): mostra na faixa o que ela está vendo.
+  let debug = null;
+  bridge.onDebug((d) => { debug = d; });
+
+  window.addEventListener('click', (e) => {
     const hit = hitTest(e.clientX, e.clientY);
+    if (debug) debug.lastClick = `${Math.round(e.clientX)},${Math.round(e.clientY)} ${hit || '-'}`;
     if (hit === 'hud' || hit === 'lead') bridge.openPanel();
     if (hit === 'askYes') answerCatch(true);
     if (hit === 'askNo') answerCatch(false);

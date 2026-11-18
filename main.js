@@ -99,6 +99,7 @@ function placeStrip({ force = false } = {}) {
 // e não faz nada. Desligar e religar força o Windows a reinserir a janela no topo da pilha.
 function reassertTop() {
   if (!alive(strip)) return;
+  if (stripGrabbing) { strip.moveTop(); return; } // no meio de um clique: sem desligar o topo
   if (!strip.isVisible() || strip.isMinimized()) strip.showInactive();
   strip.setAlwaysOnTop(false);
   strip.setAlwaysOnTop(true, 'screen-saver', 1);
@@ -151,20 +152,25 @@ function createStrip() {
   strip.on('minimize', () => { strip.restore(); reassertTop(); });
 
   setInterval(watchdog, 750);
-  setInterval(trackCursor, 60);
+  setInterval(trackCursor, 100);
 }
 
-// Diz pra faixa onde o cursor está (coordenadas da janela) enquanto ele estiver em cima dela,
-// e avisa uma vez quando sai. A faixa decide se o clique é dela ou atravessa pra barra.
+// Avisa a faixa quando o cursor SAI dela (a posição exata vem do mousemove da própria página;
+// a do sistema pode vir deslocada com escala de DPI). Com o diagnóstico ligado, manda os números.
 let cursorInside = false;
+let stripGrabbing = false; // a faixa está aceitando clique (mouse em cima de algo clicável)
 function trackCursor() {
   if (!alive(strip)) return;
   const p = screen.getCursorScreenPoint();
   const b = strip.getBounds();
   const inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
-  if (inside) strip.webContents.send('strip:cursor', { x: p.x - b.x, y: p.y - b.y });
-  else if (cursorInside) strip.webContents.send('strip:cursor', null);
+  if (!inside && cursorInside) strip.webContents.send('strip:cursor', null);
   cursorInside = inside;
+  // Com o mouse em cima da faixa, a barra de tarefas (embaixo) recebe o movimento enquanto a
+  // faixa deixa o clique passar e se coloca na frente. Reafirma o topo a cada 100 ms nesse período.
+  // moveTop não pisca (diferente de desligar/religar o sempre-no-topo, que o watchdog faz).
+  if (inside || stripGrabbing) strip.moveTop();
+  if (config.debugMouse) strip.webContents.send('strip:debug', { on: true, pt: p, b, scale: targetDisplay().scaleFactor });
 }
 
 function panelBounds() {
@@ -299,6 +305,16 @@ function buildTrayMenu() {
       },
     },
     { type: 'separator' },
+    {
+      label: 'Diagnóstico do mouse',
+      type: 'checkbox',
+      checked: !!config.debugMouse,
+      click: (item) => {
+        config.debugMouse = item.checked;
+        saveConfig();
+        if (alive(strip)) strip.webContents.send('strip:debug', { on: item.checked });
+      },
+    },
     { label: 'Abrir pasta de sprites', click: () => shell.openPath(ensureUserSprites()) },
     { label: 'Recarregar sprites', click: broadcastAssetsChanged },
     {
@@ -327,7 +343,12 @@ ipcMain.on('save:write', (_e, data) => {
   try { writeJsonAtomic(SAVE_FILE(), data); } catch (err) { console.error('Falha ao salvar', err); }
 });
 ipcMain.on('strip:clickthrough', (_e, ignore) => {
-  if (alive(strip)) strip.setIgnoreMouseEvents(ignore, { forward: true });
+  if (!alive(strip)) return;
+  strip.setIgnoreMouseEvents(ignore, { forward: true });
+  // Vai aceitar clique: garante que está na frente da barra de tarefas AGORA (ela se coloca
+  // na frente quando recebe o mouse, e o clique iria pra ela).
+  if (!ignore) strip.moveTop();
+  stripGrabbing = !ignore;
 });
 ipcMain.on('panel:open', showPanel);
 ipcMain.on('state:push', (_e, s) => {
