@@ -13,6 +13,10 @@
   let lastKey = '';
   let heroKey = '';
   let editing = null; // uid da criatura com o editor de golpes aberto
+  let boxFilter = { species: '', nature: '', natureNot: '', minIv: '', maxIv: '', shiny: '', gender: '' };
+  let boxSort = 'recent';
+  let selected = new Set();
+  const BOX_SHOW_MAX = 240;
   let genesOf = null; // uid da criatura com o quadro de IV/esforço aberto
   let draft = [];     // golpes marcados no editor
 
@@ -251,6 +255,7 @@
             <div class="row1"><b>${esc(nameOf(lead))} ${genderIcon(lead)}</b><span class="lv" id="h-lv"></span>${typeBadge(sp.type)}<span id="h-st"></span><span class="grow"></span><span class="nums" id="h-nums"></span></div>
             <div class="bars"><div class="bar"><i id="h-hp"></i></div><div class="bar"><i id="h-xp" style="background:var(--xp)"></i></div></div>
             <div class="status" id="h-status"></div>
+            <div class="ask" id="h-ask" hidden></div>
             <div class="log" id="h-log"></div>
           </div>
         </div>`;
@@ -269,6 +274,16 @@
     const lines = b && b.log ? b.log.slice(-3) : [];
     logEl.innerHTML = lines.map((l) => `<div>${esc(l)}</div>`).join('');
     logEl.hidden = !lines.length;
+    const askEl = $('h-ask');
+    if (b && b.ask) {
+      const key = `${b.species}${b.level}${b.gender}`;
+      if (askEl.dataset.k !== key) {
+        askEl.dataset.k = key;
+        askEl.innerHTML = `<span>Capturar <b>${esc(G.SPECIES[b.species].name)}</b>${b.gender ? (b.gender === 'F' ? ' ♀' : ' ♂') : ''} nv ${b.level}${b.caught ? '' : ' <span class="tag">NOVO</span>'}${b.shiny ? ' ✨' : ''}?</span>
+          <button class="btn primary" data-cmd="catchYes">Capturar</button><button class="btn" data-cmd="catchNo">Não</button>`;
+      }
+      askEl.hidden = false;
+    } else { askEl.hidden = true; askEl.dataset.k = ''; }
     const st = $('h-status');
     if (state.resting) st.innerHTML = '<b>Descansando…</b> recupera o HP em alguns segundos.';
     else if (b) st.innerHTML = `Batalhando contra <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>. Clique nele na barra pra lançar uma cápsula!`;
@@ -326,15 +341,70 @@
     box() {
       if (!state.box.length) return '<div class="card empty">A caixa está vazia.<br><span class="muted">Quando a equipe enche, as capturas vêm pra cá.</span></div>';
       const full = state.team.length >= G.TEAM_MAX;
-      return `<div class="card"><h2>Caixa <span>${state.box.length}</span></h2><div class="box">
-        ${state.box.map((c) => `
-          <div class="box-item">
+      const all = state.box;
+      for (const u of [...selected]) if (!all.some((c) => c.uid === u)) selected.delete(u); // limpa quem saiu
+      const list = all.filter((c) => G.matchesFilter(c, boxFilter));
+      const sorters = {
+        recent: (a, b) => all.indexOf(b) - all.indexOf(a),
+        species: (a, b) => G.SPECIES_ORDER.indexOf(a.species) - G.SPECIES_ORDER.indexOf(b.species) || b.level - a.level,
+        level: (a, b) => b.level - a.level,
+        iv: (a, b) => G.ivPercent(b) - G.ivPercent(a),
+      };
+      list.sort(sorters[boxSort] || sorters.recent);
+      const releasable = (arr) => arr.filter((c) => !c.locked);
+      const selCount = selected.size;
+      const filtRel = releasable(list).length;
+      const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
+      const species = [...new Set(all.map((c) => c.species))].sort((a, b) => G.SPECIES_ORDER.indexOf(a) - G.SPECIES_ORDER.indexOf(b));
+      const ivClass = (p) => (p >= 90 ? 'r5' : p >= 75 ? 'r4' : p >= 60 ? 'r3' : p >= 40 ? 'r2' : 'r1');
+      return `<div class="card"><h2>Caixa <span>${all.length}</span></h2>
+        <div class="filters">
+          <select data-f="species">${opt('', 'Todas as espécies', boxFilter.species)}${species.map((sp) => opt(sp, esc(G.SPECIES[sp].name), boxFilter.species)).join('')}</select>
+          <span class="frow">
+            <select data-f="natureNot">${opt('', 'Natureza é', boxFilter.natureNot)}${opt('1', 'Natureza não é', boxFilter.natureNot)}</select>
+            <select data-f="nature">${opt('', 'qualquer', boxFilter.nature)}${opt('_neutral', 'neutra', boxFilter.nature)}${Object.entries(G.NATURES).filter(([, n]) => n.up).map(([id, n]) => opt(id, `${esc(n.name)} (+${G.STAT_LABEL[n.up].slice(0, 3)} −${G.STAT_LABEL[n.down].slice(0, 3)})`, boxFilter.nature)).join('')}</select>
+          </span>
+          <span class="frow">IV
+            <input type="number" min="0" max="100" placeholder="0" data-f="minIv" value="${esc(boxFilter.minIv)}"> a
+            <input type="number" min="0" max="100" placeholder="100" data-f="maxIv" value="${esc(boxFilter.maxIv)}"> %
+          </span>
+          <span class="frow">
+            <select data-f="shiny">${opt('', 'Brilhante: tanto faz', boxFilter.shiny)}${opt('only', 'Só brilhantes', boxFilter.shiny)}${opt('no', 'Sem brilhantes', boxFilter.shiny)}</select>
+            <select data-f="gender">${opt('', 'Sexo: tanto faz', boxFilter.gender)}${opt('M', '♂ Macho', boxFilter.gender)}${opt('F', '♀ Fêmea', boxFilter.gender)}</select>
+          </span>
+          <span class="frow">Ordem
+            <select data-sort>${opt('recent', 'Recentes', boxSort)}${opt('species', 'Espécie', boxSort)}${opt('level', 'Nível', boxSort)}${opt('iv', 'IV', boxSort)}</select>
+            <button class="btn" data-cmd="clearFilter">Limpar filtro</button>
+          </span>
+        </div>
+        <div class="bulk">
+          <span class="muted">${list.length} de ${all.length} no filtro · <b>${selCount}</b> selecionado(s)</span>
+          <div class="btn-row">
+            <button class="btn" data-cmd="selectFiltered">Selecionar filtrados</button>
+            <button class="btn" data-cmd="clearSel" ${selCount ? '' : 'disabled'}>Limpar seleção</button>
+            <button class="btn danger" data-cmd="releaseSel" ${selCount ? '' : 'disabled'}>Soltar selecionados (${selCount})</button>
+            <button class="btn danger" data-cmd="releaseFiltered" ${filtRel ? '' : 'disabled'}>Soltar filtrados (${filtRel})</button>
+          </div>
+          <span class="muted small">Trancados 🔒 nunca são soltos. Soltar dá moedas e, às vezes, itens de esforço.</span>
+        </div>
+        <div class="box">
+        ${list.slice(0, BOX_SHOW_MAX).map((c) => {
+          const iv = G.ivPercent(c), nat = G.NATURES[c.nature];
+          const sel = selected.has(c.uid);
+          return `
+          <div class="box-item ${sel ? 'sel' : ''} ${c.locked ? 'locked' : ''}" data-sel="${c.uid}">
+            <button class="lock" data-cmd="lock" data-uid="${c.uid}" title="${c.locked ? 'Destrancar' : 'Trancar (não pode ser solto)'}">${c.locked ? '🔒' : '🔓'}</button>
+            <span class="check">${sel ? '✓' : ''}</span>
             ${spr(c.species, { shiny: c.shiny, size: 48 })}
             <span class="nm">${esc(nameOf(c))} ${genderIcon(c)}</span>
-            <span class="muted">Nv ${c.level} · ${G.TYPE_LABEL[G.SPECIES[c.species].type]}</span>
+            <span class="muted">Nv ${c.level} · ${esc(nat ? nat.name : '')}</span>
+            <span class="iv ${ivClass(iv)}" title="IV total ${iv}% · ${G.perfectIvs(c)} perfeito(s)">IV ${iv}%</span>
             <button class="btn" data-cmd="toTeam" data-uid="${c.uid}" ${full ? 'disabled title="Equipe cheia"' : ''}>→ Equipe</button>
-          </div>`).join('')}
-      </div></div>`;
+          </div>`;
+        }).join('')}
+        </div>
+        ${list.length > BOX_SHOW_MAX ? `<p class="muted">Mostrando ${BOX_SHOW_MAX} de ${list.length}. Use o filtro pra achar os outros.</p>` : ''}
+      </div>`;
     },
 
     daycare() {
@@ -467,8 +537,12 @@
       return `
         <div class="card"><h2>Jogo</h2>
           <div class="setting">
-            <div>Captura automática<div class="muted">Lança cápsulas sozinho em espécies novas e brilhantes.</div></div>
-            <label class="switch"><input type="checkbox" id="auto" ${state.settings.autoCatch ? 'checked' : ''}><span></span></label>
+            <div>Captura<div class="muted">Quando lançar cápsulas sozinho. Clicar no selvagem sempre lança.</div></div>
+            <select id="catchMode">${Object.entries(G.CATCH_MODES).map(([id, label]) => `<option value="${id}" ${state.settings.catchMode === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
+          </div>
+          <div class="setting">
+            <div>Comprar cápsulas sozinho<div class="muted">Quando acabam, compra 5 (se tiver moedas).</div></div>
+            <label class="switch"><input type="checkbox" id="autoBuy" ${state.settings.autoBuy ? 'checked' : ''}><span></span></label>
           </div>
           <div class="setting">
             <div>Aprender golpes sozinho<div class="muted">Com 4 golpes, troca o mais fraco quando aprende um melhor.</div></div>
@@ -615,8 +689,8 @@
     renderModal();
     renderEggs();
     $('gear').classList.toggle('on', tab === 'settings');
-    const auto = $('auto');
-    if (auto) auto.addEventListener('change', (e) => send({ type: 'autoCatch', value: e.target.checked }));
+    if ($('catchMode')) $('catchMode').addEventListener('change', (e) => send({ type: 'catchMode', value: e.target.value }));
+    if ($('autoBuy')) $('autoBuy').addEventListener('change', (e) => send({ type: 'autoBuy', value: e.target.checked }));
     const am = $('autoMoves');
     if (am) am.addEventListener('change', (e) => send({ type: 'autoMoves', value: e.target.checked }));
   }
@@ -659,6 +733,9 @@
   });
 
   app.addEventListener('change', (e) => {
+    const ds = e.target.dataset || {};
+    if (ds.f !== undefined) { boxFilter[ds.f] = e.target.value; rerender(); return; }
+    if (ds.sort !== undefined) { boxSort = e.target.value; rerender(); return; }
     if (e.target.dataset && e.target.dataset.hold) {
       send({ type: 'hold', uid: e.target.dataset.hold, item: e.target.value || null });
       return;
@@ -679,6 +756,28 @@
       case 'moveInfo': openModal({ kind: 'move', id: d.move, uid: d.uid || null }); break;
       case 'tmInfo': openModal({ kind: 'tm', id: d.tm, teaching: null }); break;
       case 'closeModal': modal.close(); break;
+      case 'catchYes': send({ type: 'catchAnswer', yes: true }); break;
+      case 'catchNo': send({ type: 'catchAnswer', yes: false }); break;
+      case 'lock': send({ type: 'lock', uid: d.uid }); break;
+      case 'clearFilter': boxFilter = { species: '', nature: '', natureNot: '', minIv: '', maxIv: '', shiny: '', gender: '' }; rerender(); break;
+      case 'selectFiltered':
+        state.box.filter((c) => G.matchesFilter(c, boxFilter) && !c.locked).forEach((c) => selected.add(c.uid));
+        rerender();
+        break;
+      case 'clearSel': selected.clear(); rerender(); break;
+      case 'releaseSel':
+      case 'releaseFiltered': {
+        const uids = d.cmd === 'releaseSel'
+          ? [...selected].filter((u) => !state.box.find((c) => c.uid === u)?.locked)
+          : state.box.filter((c) => G.matchesFilter(c, boxFilter) && !c.locked).map((c) => c.uid);
+        const shinies = state.box.filter((c) => uids.includes(c.uid) && c.shiny).length;
+        if (!uids.length) break;
+        if (confirm(`Soltar ${uids.length} criatura(s)${shinies ? `, incluindo ${shinies} brilhante(s)` : ''}? Não dá pra desfazer.`)) {
+          send({ type: 'release', uids });
+          uids.forEach((u) => selected.delete(u));
+        }
+        break;
+      }
       case 'daycarePut': send({ type: 'daycarePut', uid: d.uid }); break;
       case 'daycareTake': send({ type: 'daycareTake', uid: d.uid }); break;
       case 'buyTm': send({ type: 'buyTm', tm: d.tm }); break;
@@ -711,6 +810,16 @@
     }
   }
   app.addEventListener('click', onCommandClick);
+  hero.addEventListener('click', onCommandClick);
+  // clicar no cartão da caixa (fora dos botões) marca/desmarca
+  app.addEventListener('click', (e) => {
+    if (e.target.closest('button, select, input')) return;
+    const item = e.target.closest('[data-sel]');
+    if (!item) return;
+    const u = item.dataset.sel;
+    if (selected.has(u)) selected.delete(u); else selected.add(u);
+    rerender();
+  });
   modal.addEventListener('click', onCommandClick);
 
   A.onChange(() => { applyTheme(); rerender(); });

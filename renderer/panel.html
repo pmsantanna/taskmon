@@ -135,6 +135,33 @@
     .log div:last-child { color: var(--fg); }
     .log[hidden] { display: none; }
 
+    /* ---------- caixa: filtro, seleção, soltar ---------- */
+    .filters { display: grid; gap: 6px; margin-bottom: 10px; font-size: 12px; color: var(--dim); }
+    .frow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .filters select, .filters input, .setting select {
+      font: inherit; font-size: 12px; color: var(--fg); background: var(--card2); border: 1px solid var(--line);
+      border-radius: 7px; padding: 4px 6px;
+    }
+    .filters input { width: 58px; }
+    .filters select:focus, .filters input:focus { outline: none; border-color: var(--accent); }
+    .bulk { display: grid; gap: 6px; padding: 10px; margin-bottom: 10px; border-radius: 10px; background: var(--bg2); }
+    .small { font-size: 11px; }
+    .box-item { position: relative; cursor: pointer; border: 1px solid transparent; }
+    .box-item.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card2)); }
+    .box-item .check {
+      position: absolute; top: 6px; left: 6px; width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--line);
+      background: var(--bg2); color: #062a27; font-size: 11px; font-weight: 800; line-height: 15px;
+    }
+    .box-item.sel .check { background: var(--accent); border-color: var(--accent); }
+    .box-item .lock { position: absolute; top: 4px; right: 4px; border: 0; background: none; cursor: pointer; font-size: 12px; opacity: .45; padding: 2px; }
+    .box-item.locked .lock, .box-item .lock:hover { opacity: 1; }
+    .ask {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px;
+      background: color-mix(in srgb, var(--gold) 12%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+    }
+    .ask > span { flex: 1; min-width: 160px; }
+    .ask[hidden] { display: none; }
+
     /* ---------- sexo / creche / ovos ---------- */
     .g { font-weight: 800; font-size: 12px; }
     .g.m { color: #60a5fa; } .g.f { color: #f472b6; }
