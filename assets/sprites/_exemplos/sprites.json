@@ -1,0 +1,8 @@
+{
+  "creatures/pavio.png": { "frames": 4, "fps": 6 },
+  "tiles/campina_ground.png": { "speed": 1, "feet": 4 },
+  "tiles/campina_bg.png": { "speed": 0.3 },
+  "ui/hud.png": { "slice": 4, "scale": 2 },
+  "ui/toast.png": { "slice": 3, "scale": 1 },
+  "ui/card.png": { "slice": 4, "scale": 2 }
+}

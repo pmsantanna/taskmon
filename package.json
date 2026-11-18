@@ -1,0 +1,21 @@
+{
+  "name": "taskmon",
+  "version": "0.1.0",
+  "description": "Joguinho idle de criaturas na barra de tarefas",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.pedro.taskmon",
+    "productName": "Taskmon",
+    "files": ["main.js", "preload.js", "renderer/**", "shared/**", "assets/**"],
+    "win": { "icon": "assets/icon.png" }
+  }
+}
