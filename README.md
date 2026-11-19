@@ -132,13 +132,20 @@ Naturezas e itens ficam em `shared/items.js`.
 
 ## Visual
 
-Estilo DS: o painel tem duas "telas" — em cima a batalha (céu, grama e plataformas, caixa do líder
-com HP verde/amarelo/vermelho e a caixa de mensagens com ▼), uma dobradiça no meio e embaixo o menu
-de toque com botões coloridos e as janelas de conteúdo. Fonte de pixel DotGothic16 (OFL, em
-`assets/fonts/`, funciona offline). O painel não tem a moldura do Windows: o topo é desenhado pelo app
-(arraste por ele; _ minimiza, X fecha). Em ⚙ Ajustes → **Tela** dá pra trocar a cor da moldura:
-Azul, Vermelho, Verde ou Noite (escuro). As cores ficam em `PALETTES` (shared/assets.js) e o CSS em
-`renderer/ds.css`.
+Interface estilo DS feita a partir do design do Claude Design ("Taskmon · interface retrô").
+
+- **Faixa** (600 px por padrão): placa do líder com retrato, HP e EXP, a cena com o bicho passeando,
+  a bolsa (moedas e cápsulas) e 4 botões — **Equipe**, **Mochila**, **Dex** e **Opções** — que abrem o
+  painel na seção certa. No encontro aparece a plaquinha do selvagem com um "!"; derrotado, a caixa de
+  diálogo pergunta "Capturar?" com um timer e os botões **CAPTURAR** / **DEIXAR IR**.
+- **Painel** = um aparelho de duas telas (512×384 cada, encolhe se não couber na tela): em cima a batalha
+  ou a exploração, embaixo as seções com abas — Equipe/Caixa/Creche, Loja/MTs, Dex (lista e registro com
+  Registro/Área/Tamanho) e Zonas/Ajustes. Tocar num bicho abre o **resumo** (Info, Status, Golpes).
+  Quando a faixa pergunta "Capturar?", a tela de baixo vira **Escolha uma ação**.
+- Fonte Pixelify Sans (OFL, em `assets/fonts/`, funciona offline). O topo do painel é desenhado pelo app
+  (arraste por ele; _ minimiza, X fecha).
+- Arquivos: `renderer/strip-ui.js` + `strip.css` (faixa), `renderer/panel.js` + `ds.css` (painel),
+  fichas da Dex em `shared/dex.js`.
 
 ## Sprites e tiles customizados
 
@@ -175,7 +182,9 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 | `renderer/panel.js` | O painel: só mostra o estado e manda comandos |
 | `shared/bridge-fallback.js` | Permite abrir os HTML direto no navegador pra mexer no visual |
 | `renderer/*.html` | Casca das duas janelas (faixa e painel) |
-| `renderer/ds.css`, `renderer/fonts.css` | Visual estilo DS do painel e a fonte de pixel |
+| `renderer/strip-ui.js`, `renderer/strip.css` | Placas, diálogo e botões da faixa (HTML por cima do canvas) |
+| `renderer/ds.css`, `renderer/fonts.css` | Visual do painel em duas telas e a fonte de pixel |
+| `shared/dex.js` | Fichas da Dex: categoria, altura, peso, habitat, descrição |
 | `assets/icon.png` | Ícone do app e da bandeja (256×256) |
 | `assets/sprites/` | Sprites que vão junto no build + `LEIA-ME.txt` + `_exemplos/` |
 

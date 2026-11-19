@@ -1,811 +1,766 @@
-// Painel de gerenciamento: equipe, caixa, zonas, loja, bestiário e ajustes.
+// Painel em duas telas (design DS do Claude Design).
+// Tela de cima: batalha ou exploração. Tela de baixo: Equipe, Mochila, Dex e Opções (os mesmos
+// 4 botões da faixa), com abas; quando a faixa pergunta "Capturar?", vira a tela de ações.
 // Não guarda estado do jogo: recebe cópias da faixa e devolve comandos.
 
 (async () => {
   'use strict';
   const G = window.Game;
   const A = window.Assets;
+  const DX = window.DexInfo;
   const bridge = window.bridge;
   const $ = (id) => document.getElementById(id);
-  const app = $('app'), hero = $('hero'), tabsEl = $('tabs');
+  const top = $('top'), bottom = $('bottom'), modal = $('modal');
 
   let state = null;
-  let lastKey = '';
-  let heroKey = '';
-  let editing = null; // uid da criatura com o editor de golpes aberto
+  let lastKey = '', topKey = '';
+
+  // ---------- navegação ----------
+  const SECTIONS = {
+    team: { tabs: [['team', 'EQUIPE'], ['box', 'CAIXA'], ['daycare', 'CRECHE']] },
+    bag: { tabs: [['shop', 'LOJA'], ['tms', 'MTs']] },
+    dex: { tabs: null },
+    opts: { tabs: [['zones', 'ZONAS'], ['settings', 'AJUSTES']] },
+  };
+  let nav = { sect: 'team', screen: 'team', uid: null, from: 'team', sumTab: 'info', dexSel: 0, dexTab: 'reg', dexFilter: 'all' };
+  try { nav = { ...nav, ...JSON.parse(localStorage.getItem('taskmon-nav') || '{}') }; } catch { /* sem storage */ }
+  const saveNav = () => { try { localStorage.setItem('taskmon-nav', JSON.stringify(nav)); } catch { /* sem storage */ } };
+
   let boxFilter = { species: '', nature: '', natureNot: '', minIv: '', maxIv: '', shiny: '', gender: '' };
   let boxSort = 'recent';
-  let selected = new Set();
-  const BOX_SHOW_MAX = 240;
-  let genesOf = null; // uid da criatura com o quadro de IV/esforço aberto
-  let draft = [];     // golpes marcados no editor
-
-  const TABS = [
-    { id: 'team', label: 'Equipe' },
-    { id: 'box', label: 'Caixa' },
-    { id: 'daycare', label: 'Creche' },
-    { id: 'zones', label: 'Zonas' },
-    { id: 'shop', label: 'Loja' },
-    { id: 'tms', label: 'MTs' },
-    { id: 'dex', label: 'Bestiário' },
-
-  ];
-  let tab = 'team';
-  try { tab = localStorage.getItem('taskmon-tab') || 'team'; } catch { /* sem storage */ }
+  const selected = new Set();
+  let modalState = null; // { kind: 'move'|'tm'|'moves', ... }
+  let askSeen = false;   // a pergunta de captura abriu a tela de ações?
 
   const send = (cmd) => bridge.sendCommand(cmd);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const zoneOf = (id) => G.ZONES.find((z) => z.id === id) || G.ZONES[0];
-  const genderIcon = (c) => (c.gender ? `<span class="g ${c.gender === 'F' ? 'f' : 'm'}">${c.gender === 'F' ? '♀' : '♂'}</span>` : '');
-  const nameOf = (c) => G.SPECIES[c.species].name + (c.shiny ? ' ✨' : '');
+  const all = () => [...state.team, ...state.box];
+  const byUid = (u) => all().find((c) => c.uid === u) || null;
+  const dexNo = (sp) => `Nº ${String(G.SPECIES_ORDER.indexOf(sp) + 1).padStart(3, '0')}`;
+  const fmt = (n) => Math.round(n).toLocaleString('pt-BR');
+  const naZona = (id) => { const n = zoneOf(id).name; return `${/a$/i.test(n) ? 'na' : 'no'} ${n}`; }; // "na Campina", "no Lago"
 
-  // ---------- Sprites em HTML ----------
-  /** Folha de sprite como <span> com animação CSS em degraus (funciona com PNG customizado ou pixel art). */
-  function spr(species, { size = 48, shiny = false, silhouette = false, flip = false, item = false } = {}) {
+  // ---------- peças visuais ----------
+  // cores dos selos de tipo (mais escuras que as da batalha, com texto branco, como no kit)
+  const TYPE_DS = { normal: '#8a8a80', fogo: '#c8502c', agua: '#2f6fc0', planta: '#3a8a3c', eletrico: '#c89a10', pedra: '#8a5a2c', voador: '#6a5ab8' };
+  const typeBadge = (t, sm = false) => `<span class="badge${sm ? ' sm' : ''}" style="background:${TYPE_DS[t]}">${G.TYPE_LABEL[t].toUpperCase()}</span>`;
+  const gender = (c) => (c && c.gender ? `<span class="g ${c.gender === 'F' ? 'f' : 'm'}" style="font-size:16px">${c.gender === 'F' ? '♀' : '♂'}</span>` : '');
+  const statusTag = (st) => (st ? `<span class="st" style="background:${G.STATUS[st].color}">${G.STATUS[st].short}</span>` : '');
+  const hpGrad = (r) => {
+    const [a, b] = r > 0.5 ? ['#80f4a8', '#28c048'] : r > 0.2 ? ['#fce07a', '#f0a818'] : ['#ff9a8a', '#e83838'];
+    return `linear-gradient(${a} 0 45%, ${b} 45% 100%)`;
+  };
+  const lvl = (n, small = 12, big = 18) => `<span class="lv dts" style="font-size:${big}px"><span style="font-size:${small}px">Nv</span>${n}</span>`;
+
+  // ícones de pixel do design: [caminho, viewBox]
+  const ICON = {
+    team: ['M1 2h3v3H1zM6 1h3v4H6zM0 6h5v3H0zM5 6h5v3H5z', '0 0 10 10'],
+    bag: ['M3 0h4v1H3zM2 1h1v2H2zM7 1h1v2H7zM1 3h8v7H1zM4 5h2v2H4z', '0 0 10 10'],
+    dex: ['M0 1h10v8H0zM1 2h3v6H1zM6 2h3v6H6z', '0 0 10 10'],
+    opts: ['M0 2h10v1H0zM0 5h10v1H0zM0 8h10v1H0zM2 1h2v3H2zM6 4h2v3H6zM3 7h2v3H3z', '0 0 10 10'],
+    left: ['M3 0h1v6H3zM2 1h1v4H2zM1 2h1v2H1z', '0 0 6 6'],
+    right: ['M2 0h1v6H2zM3 1h1v4H3zM4 2h1v2H4z', '0 0 6 6'],
+    filter: ['M0 0h8v1H0zM1 1h6v1H1zM2 2h4v1H2zM3 3h2v5H3z', '0 0 8 8'],
+    sound: ['M0 3h2v2H0zM2 2h1v4H2zM3 1h1v6H3zM5 2h1v1H5zM6 1h1v1H6zM5 5h1v1H5zM6 6h1v1H6zM6 3h2v2H6z', '0 0 8 8'],
+    eye: ['M2 0h4v1H2zM1 1h1v1H1zM6 1h1v1H6zM0 2h1v2H0zM7 2h1v2H7zM1 4h1v1H1zM6 4h1v1H6zM2 5h4v1H2zM3 2h2v2H3z', '0 0 8 6'],
+  };
+  const svg = (name, size = 20) => {
+    const [d, vb] = ICON[name];
+    const [, , w, h] = vb.split(' ').map(Number);
+    return `<svg width="${size}" height="${Math.round((size * h) / w)}" viewBox="${vb}" shape-rendering="crispEdges" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${d}"/></svg>`;
+  };
+
+  /** Folha de sprite como <span> (anima com CSS em degraus). */
+  function spr(species, { size = 48, shiny = false, silhouette = false, flip = false, item = false, cls = '' } = {}) {
     const sheet = item ? A.item(species) : A.creature(species, shiny);
-    const k = size / Math.max(sheet.fw, sheet.fh) * (item ? 1 : sheet.size);
+    const k = (size / Math.max(sheet.fw, sheet.fh)) * (item ? 1 : sheet.size);
     const w = Math.round(sheet.fw * k), h = Math.round(sheet.fh * k);
     const url = silhouette ? A.silhouetteUrl(species) : A.sheetUrl(sheet);
     const n = silhouette ? 1 : sheet.frames;
-    const anim = n > 1 ? ' anim' : '';
     const style = `width:${w}px;height:${h}px;--n:${n};--dur:${(n / sheet.fps).toFixed(3)}s;background-image:url(${url})`;
-    return `<span class="spr-box" style="width:${size}px;height:${size}px"><i class="spr${anim}${flip ? ' flip' : ''}" style="${style}"></i></span>`;
+    return `<span class="spr-box ${cls}" style="width:${size}px;height:${size}px"><i class="spr${n > 1 ? ' anim' : ''}${flip ? ' flip' : ''}" style="${style}"></i></span>`;
+  }
+  const capIcon = (w = 12, h = 15) => {
+    const f = A.ui('capsule');
+    return f ? `<img src="${f.img.src}" width="${w}" height="${h}" alt="">` : spr('capsula', { item: true, size: h });
+  };
+
+  /** Cenário do retrato (céu em faixas, plataforma e o bicho pulando). */
+  function portrait(species, { shiny = false, height = 140, small = false, silhouette = false, corner = '' } = {}) {
+    const oval = small ? 'width:140px;height:30px;bottom:10px' : 'width:150px;height:34px;bottom:12px';
+    const who = small ? 'bottom:20px' : 'bottom:22px';
+    return `<div class="portrait${small ? ' small' : ''}" style="height:${height}px">
+      <div class="b1"></div><div class="b2"></div><div class="b3"></div><div class="b4"></div><div class="b5"></div>
+      <div class="oval" style="${oval}"></div>
+      <div class="who" style="${who}">${spr(species, { shiny, size: small ? 72 : 88, silhouette, cls: silhouette ? '' : 'bob' })}</div>
+      ${corner}
+    </div>`;
   }
 
-  // cores via --t: aparecem na paleta Color; nas paletas GB o CSS usa os 4 tons
-  const coin = () => `<span class="coin-ico">${spr('_coin', { size: 12 })}</span>`;
-  const typeBadge = (t) => `<span class="type" style="--t:${G.TYPE_COLOR[t]}">${G.TYPE_LABEL[t]}</span>`;
-  const statusBadge = (st) => (st ? `<span class="st" style="--t:${G.STATUS[st].color}" title="${G.STATUS[st].label}">${G.STATUS[st].short}</span>` : '');
+  function sects(active) {
+    const b = (id, color, title) => `<button class="rbtn${active === id ? ' on' : ''}" style="background:${color}" data-cmd="sect" data-sect="${id}" title="${title}">${svg(id, 18)}</button>`;
+    return `<div class="sects">${b('team', '#4caa52', 'Equipe')}${b('bag', '#e89a30', 'Mochila')}${b('dex', '#e05848', 'Dex')}${b('opts', '#4888d0', 'Opções')}</div>`;
+  }
+  function tabs(list, cur, attr = 'screen') {
+    return list.map(([id, label]) => `<button class="tab${cur === id ? ' on' : ''}" data-cmd="tab" data-${attr}="${id}">${label}</button>`).join('');
+  }
+  const closeBtn = (label = 'Fechar', cmd = 'close') => `<button class="tbtn blue" data-cmd="${cmd}">${label}</button>`;
 
-  function moveChip(id, c) {
-    const m = G.MOVES[id];
-    const cat = G.CATEGORY[m.cat];
-    const pp = `${c.pp?.[id] ?? m.pp}/${m.pp} PP`;
-    const power = m.cat === 'status' ? '—' : m.power;
-    return `<button class="move" style="--t:${G.TYPE_COLOR[m.type]}" data-cmd="moveInfo" data-move="${id}" data-uid="${c.uid}">
-      <b>${esc(m.name)}</b>
-      <span><i style="color:${cat.color}">${cat.icon}</i> ${power} · <em data-pp-of="${c.uid}" data-move="${id}">${pp}</em></span>
+  // ---------- tela de cima ----------
+  const PLATE = {
+    foe: `<svg aria-hidden="true" width="256" height="68" viewBox="0 0 256 68"><defs><clipPath id="bt-foe"><path d="M10 3H240Q245 3 244 8L233 55Q232 61 226 61H10Q3 61 3 54V10Q3 3 10 3Z"/></clipPath></defs>
+      <path d="M8 4H242Q250 4 248 12L236 60Q234 68 226 68H8Q0 68 0 60V12Q0 4 8 4Z" fill="#2a303c"/><path d="M8 0H242Q250 0 248 8L236 56Q234 64 226 64H8Q0 64 0 56V8Q0 0 8 0Z" fill="#404858"/>
+      <g clip-path="url(#bt-foe)"><rect width="256" height="68" fill="#f6f6ea"/><rect y="50" width="256" height="18" fill="#dcdfce"/><rect y="4" width="256" height="2" fill="#ffffff"/></g></svg>`,
+    me: `<svg aria-hidden="true" width="270" height="90" viewBox="0 0 270 90"><defs><clipPath id="bt-me"><path d="M15 3H261Q267 3 267 9V77Q267 83 261 83H35Q28 83 27 77L11 8Q10 3 15 3Z"/></clipPath></defs>
+      <path d="M14 4H262Q270 4 270 12V82Q270 90 262 90H34Q26 90 24 82L8 12Q6 4 14 4Z" fill="#2a303c"/><path d="M14 0H262Q270 0 270 8V78Q270 86 262 86H34Q26 86 24 78L8 8Q6 0 14 0Z" fill="#404858"/>
+      <g clip-path="url(#bt-me)"><rect width="270" height="90" fill="#f6f6ea"/><rect y="70" width="270" height="20" fill="#dcdfce"/><rect y="4" width="270" height="2" fill="#ffffff"/></g></svg>`,
+  };
+
+  function renderTop() {
+    if (!state) return;
+    const lead = G.getLead(state);
+    const b = state.battle;
+    if (!state.starterChosen || !lead) {
+      if (topKey === 'starter') return;
+      topKey = 'starter';
+      top.innerHTML = `${bands()}<div class="dlg"><p class="dts">Olá! Escolha um parceiro na tela de baixo.</p><p class="dts soft">Ele vai andar pela sua barra de tarefas.</p><span class="more">▼</span></div>`;
+      return;
+    }
+    const key = [lead.uid, lead.species, lead.shiny, lead.gender, b ? `${b.species}${b.shiny}${b.level}${b.gender}` : '-', A.version].join('|');
+    if (key !== topKey) {
+      topKey = key;
+      const sp = G.SPECIES[lead.species];
+      top.innerHTML = `${bands()}
+        ${b ? `<div class="oval" style="right:36px;top:132px;width:200px;height:46px;background:#c8eaa4;box-shadow:inset 0 -7px 0 #94c870"></div>
+          <div class="ab" id="t-foe-spr" style="right:104px;top:84px">${spr(b.species, { shiny: b.shiny, size: 72, flip: true, cls: 'bob' })}</div>` : `<span class="zone-tag" id="t-zone"></span>`}
+        <div class="oval" style="left:22px;bottom:112px;width:240px;height:50px;background:#b4de90;box-shadow:inset 0 -8px 0 #80b85c"></div>
+        <div class="ab" style="left:94px;bottom:128px">${spr(lead.species, { shiny: lead.shiny, size: 104, cls: 'bob' })}</div>
+        ${b ? `<div class="bplate" style="left:0;top:22px;width:256px;height:68px">${PLATE.foe}
+          <div class="in" style="left:14px;right:34px;top:9px;bottom:15px">
+            <div class="line"><span class="dts" style="font-size:20px;font-weight:600;line-height:1">${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✦' : ''}</span>${gender(b)}<span id="t-foe-st"></span>${lvl(b.level)}</div>
+            <div class="hp"><span class="hp-l">HP</span><span class="hp-t"><i id="t-foe-hp"></i></span></div>
+          </div></div>` : ''}
+        <div class="bplate" style="right:0;bottom:100px;width:270px;height:90px">${PLATE.me}
+          <div class="in" style="left:34px;right:14px;top:9px;bottom:15px">
+            <div class="line"><span class="dts" style="font-size:20px;font-weight:600;line-height:1">${esc(sp.name)}${lead.shiny ? ' ✦' : ''}</span>${gender(lead)}<span id="t-me-st"></span><span class="lv dts" style="font-size:18px"><span style="font-size:12px">Nv</span><span id="t-me-lv"></span></span></div>
+            <div class="hp"><span class="hp-l">HP</span><span class="hp-t"><i id="t-me-hp"></i></span></div>
+            <div class="line"><span class="dts" id="t-me-hpn" style="margin-left:auto;font-size:16px;font-weight:600;line-height:1"></span></div>
+            <div class="xpbar"><i id="t-me-xp"></i></div>
+          </div></div>
+        <div class="dlg" id="t-dlg"><p class="dts" id="t-l1"></p><p class="dts soft" id="t-l2"></p><span class="more" id="t-more">▼</span></div>`;
+    }
+    // partes vivas
+    const max = G.maxHp(lead), r = lead.hp / max;
+    const meHp = $('t-me-hp');
+    meHp.style.width = `${(G.clamp(r, 0, 1) * 100).toFixed(1)}%`;
+    meHp.style.background = hpGrad(r);
+    $('t-me-hpn').textContent = `${Math.ceil(lead.hp)} / ${max}`;
+    $('t-me-lv').textContent = lead.level;
+    $('t-me-xp').style.width = `${(G.clamp(lead.xp / G.xpToNext(lead.level), 0, 1) * 100).toFixed(1)}%`;
+    $('t-me-st').innerHTML = statusTag(lead.status);
+    if (b) {
+      const fr = b.max ? b.hp / b.max : 0;
+      const fh = $('t-foe-hp');
+      fh.style.width = `${(G.clamp(fr, 0, 1) * 100).toFixed(1)}%`;
+      fh.style.background = hpGrad(fr);
+      $('t-foe-st').innerHTML = statusTag(b.status);
+      $('t-foe-spr').classList.toggle('downed', !!b.defeated);
+    } else {
+      $('t-zone').textContent = `ZONA ${G.ZONES.indexOf(zoneOf(state.zone)) + 1} · ${zoneOf(state.zone).name.toUpperCase()}`;
+    }
+    // caixa de diálogo
+    const dlg = $('t-dlg');
+    let l1 = '', l2 = '', kind = '';
+    if (b && b.ask) {
+      const nm = `<strong>${esc(G.SPECIES[b.species].name.toUpperCase())}</strong>`;
+      l1 = b.ask === 'retry' ? `${nm} escapou da cápsula!` : `${nm} foi derrotado!`;
+      l2 = b.ask === 'retry' ? 'Tentar outra cápsula?' : `Capturar? (${b.caps} cápsula${b.caps === 1 ? '' : 's'})`;
+      kind = !b.caught || b.shiny ? 'alert' : '';
+    } else if (b) {
+      const log = (b.log || []).slice(-2);
+      if (log.length > 1) { l1 = esc(log[0]); l2 = esc(log[1]); } else {
+        l1 = `Um <strong>${esc(G.SPECIES[b.species].name.toUpperCase())}</strong> selvagem apareceu!`; // como no design
+        l2 = `O que o ${esc(G.SPECIES[lead.species].name)} vai fazer?`;
+      }
+    } else if (state.resting) {
+      l1 = `${esc(G.SPECIES[lead.species].name)} está descansando…`;
+      l2 = 'Recupera o HP em alguns segundos.';
+    } else {
+      l1 = `Explorando: <strong>${esc(zoneOf(state.zone).name)}</strong>`;
+      l2 = `${esc(G.SPECIES[lead.species].name)} caminha na barra de tarefas.`;
+    }
+    dlg.className = `dlg ${kind}`;
+    $('t-l1').innerHTML = l1;
+    $('t-l2').innerHTML = l2;
+    $('t-l2').classList.toggle('hide', !l2);
+  }
+  const bands = () => '<div class="sky"></div><div class="sky2"></div><div class="sky3"></div><div class="sky4"></div><div class="gr1"></div><div class="gr2"></div><div class="gr3"></div><div class="gr4"></div>';
+
+  // ---------- telas de baixo ----------
+  function teamCard(c, lead) {
+    if (!c) return '<div class="slot-empty">vazio</div>';
+    const max = G.maxHp(c), r = c.hp / max;
+    const isLead = c.uid === lead?.uid;
+    return `<button class="card${isLead ? ' lead' : ''}" data-cmd="summary" data-uid="${c.uid}">
+      ${isLead ? '<span class="tag gold lead-tag">LÍDER</span>' : ''}
+      <span class="medal">${spr(c.species, { shiny: c.shiny, size: 38 })}</span>
+      <span class="info">
+        <span class="line" style="gap:5px"><span class="nm dts">${esc(G.SPECIES[c.species].name)}</span>${gender(c)}${statusTag(c.status)}${lvl(c.level, 11, 15)}</span>
+        <span class="hp"><span class="hp-l">HP</span><span class="hp-t"><i style="width:${(G.clamp(r, 0, 1) * 100).toFixed(1)}%;background:${hpGrad(r)}"></i></span></span>
+        <span class="hpn dts">${Math.ceil(c.hp)}/${max}</span>
+      </span>
     </button>`;
   }
 
-  const catBadge = (cat) => `<span class="cat" style="--c:${G.CATEGORY[cat].color}">${G.CATEGORY[cat].icon} ${G.CATEGORY[cat].label}</span>`;
-  const tmOfMove = (id) => Object.keys(G.TMS).find((t) => G.TMS[t].move === id);
+  const screens = {
+    starters() {
+      return {
+        head: '<div class="pill"><h1>ESCOLHA SEU PARCEIRO</h1></div>',
+        body: `<div class="starters">${G.STARTERS.map((id) => {
+          const sp = G.SPECIES[id];
+          return `<div class="plate starter">${portrait(id, { height: 120, small: true })}
+            <b class="dts">${esc(sp.name)}</b>${typeBadge(sp.type, true)}
+            <button class="tbtn green sm" data-cmd="starter" data-species="${id}">Escolher</button></div>`;
+        }).join('')}</div>`,
+        foot: '<span class="hint dts">Ele anda pela barra de tarefas e luta sozinho.</span>',
+      };
+    },
 
-  /** Quem aprende o golpe por nível (espécies já vistas; as outras ficam como ???). */
-  function learnedBy(id) {
-    const out = [];
-    for (const sp of G.SPECIES_ORDER) {
-      const ls = G.LEARNSETS[sp] || {};
-      const lvl = Object.keys(ls).map(Number).sort((a, b) => a - b).find((l) => ls[l].includes(id));
-      if (lvl == null) continue;
-      // evolução que herda o mesmo nível da forma anterior não precisa aparecer duas vezes
-      const prev = G.SPECIES_ORDER.find((o) => G.SPECIES[o].evolvesTo === sp);
-      if (prev && (G.LEARNSETS[prev] || {})[lvl]?.includes(id)) continue;
-      out.push({ sp, lvl, seen: !!state.dex.seen[sp] });
-    }
-    return out;
-  }
+    encounter() {
+      const b = state.battle;
+      const caps = (state.items.capsula || 0) + (state.items.super || 0);
+      const retry = b && b.ask === 'retry';
+      return {
+        raw: `<div class="head" style="height:22px;padding:0 14px"><span class="dts grow" style="font-size:15px;font-weight:600;color:#3c4a48">Escolha uma ação</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;color:#3c4a48">${capIcon()}${caps}</span></div>
+          <div class="actions">
+            <button class="tbtn red big" data-cmd="catchYes" ${caps ? '' : 'disabled'}>${capIcon(48, 60)}${retry ? 'TENTAR OUTRA' : 'CAPTURAR'}</button>
+            <div class="two">
+              <button class="tbtn orange" data-cmd="sect" data-sect="bag">${svg('bag', 28)}MOCHILA</button>
+              <button class="tbtn green" data-cmd="sect" data-sect="team">${svg('team', 28)}EQUIPE</button>
+            </div>
+            <button class="tbtn blue leave" data-cmd="catchNo">DEIXAR IR</button>
+          </div>`,
+      };
+    },
 
-  /** Conteúdo do popup de um golpe: cabeçalho, números, descrição e como aprender. */
-  function moveDetails(id, c = null) {
-    const m = G.MOVES[id];
-    const lines = G.describeMove(id);
-    const stat = (label, value) => `<div><span>${label}</span><b>${value}</b></div>`;
-    const tm = tmOfMove(id);
-    const by = learnedBy(id);
-    return `
-      <div class="md-head" style="--t:${G.TYPE_COLOR[m.type]}">
-        <h3>${esc(m.name)}</h3>
-        <div class="md-tags">${typeBadge(m.type)}${catBadge(m.cat)}</div>
-      </div>
-      <div class="md-stats">
-        ${stat('Poder', m.cat === 'status' ? '—' : m.power)}
-        ${stat('Precisão', m.acc == null ? 'sempre' : `${m.acc}%`)}
-        ${stat('PP', c && c.pp?.[id] != null ? `${c.pp[id]}/${m.pp}` : m.pp)}
-        ${stat('Prioridade', m.priority ? `+${m.priority}` : '0')}
-      </div>
-      <ul class="md-desc">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
-      ${by.length || tm ? `<div class="md-learn">
-        ${by.length ? `<div><span class="muted">Aprendem por nível:</span> ${by.map((b) => `<span class="lchip">${b.seen ? esc(G.SPECIES[b.sp].name) : '???'} <i>nv ${b.lvl}</i></span>`).join('')}</div>` : ''}
-        ${tm ? `<div><span class="muted">Máquina:</span> <button class="lchip link" data-cmd="tmInfo" data-tm="${tm}">${tm.toUpperCase()}${G.hasTm(state, tm) ? ' ✓' : ''}</button></div>` : ''}
-      </div>` : ''}`;
-  }
-
-  /** Quadro de atributos: valor, IV (avaliação do juiz) e nível de esforço com botão de item. */
-  function natureText(c) {
-    const n = G.NATURES[c.nature];
-    if (!n) return '';
-    return n.up ? `${n.name} (+${G.STAT_LABEL[n.up]}, −${G.STAT_LABEL[n.down]})` : `${n.name} (neutra)`;
-  }
-
-  function genesBox(c) {
-    const st = G.stats(c);
-    const nat = G.NATURES[c.nature] || {};
-    const rows = G.STAT_KEYS.map((k) => {
-      const mark = nat.up === k ? '<i class="up">▲</i>' : nat.down === k ? '<i class="down">▼</i>' : '';
-      const iv = c.ivs[k], ef = c.effort[k];
-      const item = G.gritFor(ef);
-      const have = item ? state.items[item] || 0 : 0;
-      const pips = Array.from({ length: G.EFFORT_MAX }, (_, i) => `<i class="${i < ef ? 'on' : ''}"></i>`).join('');
-      const rating = G.ivRating(iv);
-      return `<div class="gene">
-        <span class="gk">${G.STAT_LABEL[k]} ${mark}</span>
-        <b class="gv">${st[k]}</b>
-        <span class="iv r${iv >= 31 ? 5 : iv >= 30 ? 4 : iv >= 26 ? 3 : iv >= 16 ? 2 : iv >= 1 ? 1 : 0}" title="IV ${iv}/31">${rating}</span>
-        <span class="pips" title="Nível de esforço ${ef}/${G.EFFORT_MAX}">${pips}</span>
-        ${item
-          ? `<button class="btn mini" data-cmd="grit" data-uid="${c.uid}" data-stat="${k}" ${have ? '' : 'disabled'} title="Usar ${esc(G.SHOP[item].name)} (você tem ${have})">${spr(item, { item: true, size: 16 })}+</button>`
-          : '<span class="tag">MÁX</span>'}
-      </div>`;
-    }).join('');
-    return `<div class="editor genes">
-      <div><b>Natureza:</b> ${esc(natureText(c))}</div>
-      <div class="muted">Valor · IV (avaliação) · nível de esforço. Os itens de esforço vêm da loja e de batalhas.</div>
-      ${rows}
-    </div>`;
-  }
-
-  /** Linha do item de segurar: ícone + seletor com os itens da mochila. */
-  function heldRow(c) {
-    const owned = Object.keys(G.HELD).filter((id) => (state.items[id] || 0) > 0 && id !== c.held);
-    const cur = c.held && G.HELD[c.held];
-    const opts = [
-      `<option value="">${cur ? 'Tirar item' : 'Nenhum item'}</option>`,
-      ...(cur ? [`<option value="${c.held}" selected>${esc(cur.name)}</option>`] : []),
-      ...owned.map((id) => `<option value="${id}">${esc(G.HELD[id].name)} (${state.items[id]})</option>`),
-    ].join('');
-    return `<div class="held" title="${cur ? esc(cur.desc) : 'Compre itens de segurar na loja'}">
-      ${cur ? spr(c.held, { item: true, size: 20 }) : '<span class="held-empty"></span>'}
-      <span class="muted">Segurando</span>
-      <select data-hold="${c.uid}" ${!cur && !owned.length ? 'disabled' : ''}>${opts}</select>
-      ${cur ? `<span class="muted held-desc">${esc(cur.desc)}</span>` : ''}
-    </div>`;
-  }
-
-  function moveEditor(c) {
-    return `<div class="editor">
-      <div class="muted">Escolha até 4 golpes (${draft.length}/4):</div>
-      <div class="known">
-        ${c.known.map((id) => {
-          const on = draft.includes(id);
-          const m = G.MOVES[id];
-          return `<label class="pick ${on ? 'on' : ''}" style="--t:${G.TYPE_COLOR[m.type]}">
-            <input type="checkbox" data-pick="${id}" ${on ? 'checked' : ''} ${!on && draft.length >= 4 ? 'disabled' : ''}>
-            <b>${esc(m.name)}</b><span>${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power}</span>
-            <button class="info" data-cmd="moveInfo" data-move="${id}" data-uid="${c.uid}" title="Detalhes">?</button>
-          </label>`;
-        }).join('')}
-      </div>
-      <div class="btn-row">
-        <button class="btn primary" data-cmd="saveMoves" data-uid="${c.uid}" ${draft.length ? '' : 'disabled'}>Salvar</button>
-        <button class="btn" data-cmd="cancelMoves">Cancelar</button>
-      </div>
-    </div>`;
-  }
-
-  const bar = (ratio, color) => `<div class="bar"><i style="width:${Math.round(G.clamp(ratio, 0, 1) * 100)}%;background:${color}"></i></div>`;
-
-  function uiIcon(name, fallback) {
-    const f = A.ui(name);
-    return f ? `<img class="ico" src="${f.img.src}" alt="">` : fallback;
-  }
-
-  // ---------- Tema (molduras/texturas da pasta ui/ e tiles das zonas) ----------
-  function nineCss(name, selector) {
-    const f = A.ui(name);
-    if (!f) return '';
-    const [t, r, b, l] = f.slice;
-    const s = f.scale;
-    return `${selector} {
-      border-style: solid; border-color: transparent; border-radius: 0; background: none;
-      border-width: ${t * s}px ${r * s}px ${b * s}px ${l * s}px;
-      border-image: url(${f.img.src}) ${t} ${r} ${b} ${l} fill / ${t * s}px ${r * s}px ${b * s}px ${l * s}px ${f.cfg.repeat || 'stretch'};
-      image-rendering: pixelated;
-    }`;
-  }
-
-  /** Cores do tema (moldura) nas variáveis CSS. */
-  function applyPalette() {
-    const p = A.palette;
-    const root = document.documentElement.style;
-    const vars = { frame: p.frame, frame2: p.frame2, frame3: p.frame3, bg1: p.bg1, bg2: p.bg2, paper: p.paper, paper2: p.paper2, ink: p.ink, 'ink-soft': p.inkSoft, shadow: p.shadow };
-    for (const [k, v] of Object.entries(vars)) root.setProperty(`--${k}`, v);
-    document.body.classList.toggle('dark', !!p.dark);
-    document.body.dataset.pal = A.paletteId;
-  }
-
-  function applyTheme() {
-    applyPalette();
-    let css = '';
-    css += nineCss('card', '.card, .hero');
-    css += nineCss('button', 'button.btn');
-    const bgTex = A.ui('background');
-    if (bgTex) {
-      css += `body { background-image: url(${bgTex.img.src}); background-size: ${bgTex.img.width * bgTex.scale}px ${bgTex.img.height * bgTex.scale}px; image-rendering: pixelated; }`;
-    }
-    $('theme').textContent = css;
-  }
-
-  function zoneStyle(zoneId) {
-    const z = zoneOf(zoneId);
-    const parts = [`--zone:${z.color}`];
-    const bg = A.tile(zoneId, 'bg');
-    const gr = A.tile(zoneId, 'ground');
-    if (bg) parts.push(`--stage-bg:url(${bg.img.src})`);
-    if (gr) parts.push(`--ground-bg:url(${gr.img.src})`, '--ground-op:1', `--ground-h:${Math.min(48, gr.img.height * 2)}px`);
-    return parts.join(';');
-  }
-
-  function zonePreview(zoneId) {
-    const z = zoneOf(zoneId);
-    const gr = A.tile(zoneId, 'ground');
-    const bg = A.tile(zoneId, 'bg');
-    const layers = [gr, bg].filter(Boolean).map((t) => `url(${t.img.src})`);
-    if (!layers.length) return `background:linear-gradient(180deg, color-mix(in srgb, ${z.color} 35%, #111), ${z.color})`;
-    return `background-image:${layers.join(',')};background-color:${z.color}`;
-  }
-
-  // ---------- Herói (líder + batalha atual) ----------
-  function renderHero() {
-    if (!state || !state.starterChosen) { hero.innerHTML = ''; heroKey = ''; return; }
-    const lead = G.getLead(state);
-    if (!lead) return;
-    const b = state.battle;
-    // A parte "estrutural" só é refeita quando muda (não reinicia as animações a cada segundo).
-    const key = [lead.uid, lead.species, lead.shiny, state.zone, b ? `${b.species}${b.shiny}${b.level}` : '-', A.version].join('|');
-    if (key !== heroKey) {
-      heroKey = key;
-      const sp = G.SPECIES[lead.species];
-      hero.innerHTML = `
-        <div class="hero">
-          <div class="stage" style="${zoneStyle(state.zone)}">
-            <span class="zone-name">${esc(zoneOf(state.zone).name)}</span>
-            ${spr(lead.species, { size: 72, shiny: lead.shiny })}
-            ${b ? `<span class="vs">VS</span>
-              <div class="wild"><small id="h-wild"></small>${spr(b.species, { size: 64, shiny: b.shiny, flip: true })}</div>` : '<span></span>'}
-          </div>
-          <div class="info">
-            <div class="row1"><b>${esc(nameOf(lead))} ${genderIcon(lead)}</b><span class="lv" id="h-lv"></span>${typeBadge(sp.type)}<span id="h-st"></span><span class="grow"></span><span class="nums" id="h-nums"></span></div>
-            <div class="bars"><div class="bar"><i id="h-hp"></i></div><div class="bar"><i id="h-xp" style="background:var(--xp)"></i></div></div>
-            <div class="status" id="h-status"></div>
-            <div class="ask" id="h-ask" hidden></div>
-            <div class="log" id="h-log"></div>
-          </div>
-        </div>`;
-    }
-    // Partes "vivas": atualizam a cada sync.
-    const max = G.maxHp(lead), hpR = lead.hp / max, need = G.xpToNext(lead.level);
-    $('h-lv').textContent = `Nv ${lead.level}`;
-    $('h-nums').textContent = `HP ${Math.round(lead.hp)}/${max} · XP ${lead.xp}/${need}`;
-    const hp = $('h-hp');
-    hp.style.width = `${Math.round(G.clamp(hpR, 0, 1) * 100)}%`;
-    hp.style.background = hpR > 0.5 ? 'var(--hp)' : hpR > 0.2 ? 'var(--hp-mid)' : 'var(--danger)';
-    $('h-xp').style.width = `${Math.round(G.clamp(lead.xp / need, 0, 1) * 100)}%`;
-    if (b && $('h-wild')) $('h-wild').innerHTML = `${esc(G.SPECIES[b.species].name)} nv ${b.level} · ${b.hp}/${b.max} ${statusBadge(b.status)}`;
-    $('h-st').innerHTML = statusBadge(lead.status);
-    const logEl = $('h-log');
-    const lines = b && b.log ? b.log.slice(-3) : [];
-    logEl.innerHTML = lines.map((l) => `<div>${esc(l)}</div>`).join('');
-    logEl.hidden = !lines.length;
-    const wildEl = hero.querySelector('.stage .wild');
-    if (wildEl) wildEl.classList.toggle('down', !!(b && b.defeated));
-    const askEl = $('h-ask');
-    if (b && b.ask) {
-      const key = `${b.ask}${b.species}${b.level}${b.gender}${b.tries}${b.caps}`;
-      if (askEl.dataset.k !== key) {
-        askEl.dataset.k = key;
-        const who = `<b>${esc(G.SPECIES[b.species].name)}</b>${b.gender ? (b.gender === 'F' ? ' ♀' : ' ♂') : ''} nv ${b.level}${b.caught ? '' : ' <span class="tag">NOVO</span>'}${b.shiny ? ' ✨' : ''}`;
-        const q = b.ask === 'retry'
-          ? `${who} escapou da cápsula! Tentar outra? <span class="muted">(${b.caps} restante(s))</span>`
-          : `${who} foi derrotado. Capturar? <span class="muted">(${b.caps} cápsula(s))</span>`;
-        askEl.innerHTML = `<span>${q}</span>
-          <button class="btn primary" data-cmd="catchYes" ${b.caps ? '' : 'disabled'}>${b.ask === 'retry' ? 'Tentar outra' : 'Capturar'}</button><button class="btn" data-cmd="catchNo">${b.ask === 'retry' ? 'Deixar ir' : 'Não'}</button>`;
-      }
-      askEl.hidden = false;
-    } else { askEl.hidden = true; askEl.dataset.k = ''; }
-    const st = $('h-status');
-    if (state.resting) st.innerHTML = '<b>Descansando…</b> recupera o HP em alguns segundos.';
-    else if (b && b.defeated) st.innerHTML = `Derrotou <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>${b.tries ? ` · ${b.tries} cápsula(s) lançada(s)` : ''}.`;
-    else if (b) st.innerHTML = `Batalhando contra <b>${esc(G.SPECIES[b.species].name)}${b.shiny ? ' ✨' : ''}</b>. Derrote pra capturar (ou clique nele na barra pra arriscar antes).`;
-    else st.innerHTML = `Explorando <b>${esc(zoneOf(state.zone).name)}</b>…`;
-    // PP do líder mudam a cada golpe: atualiza os chips sem redesenhar tudo
-    document.querySelectorAll(`[data-pp-of="${lead.uid}"]`).forEach((el) => {
-      const id = el.dataset.move, m = G.MOVES[id];
-      el.textContent = `${lead.pp?.[id] ?? m.pp}/${m.pp} PP`;
-    });
-  }
-
-  // ---------- Abas ----------
-  function renderTabs() {
-    if (!state.starterChosen) { tabsEl.hidden = true; return; }
-    tabsEl.hidden = false;
-    const counts = { team: `${state.team.length}/${G.TEAM_MAX}`, box: state.box.length || '' };
-    tabsEl.innerHTML = TABS.map((t) =>
-      `<button class="${t.id === tab ? 'on' : ''}" data-tab="${t.id}">${t.label}${counts[t.id] !== undefined && counts[t.id] !== '' ? `<span class="n">${counts[t.id]}</span>` : ''}</button>`,
-    ).join('');
-  }
-
-  function monCard(c, lead) {
-    const sp = G.SPECIES[c.species];
-    const max = G.maxHp(c), need = G.xpToNext(c.level);
-    const isLead = c.uid === lead?.uid;
-    const evo = sp.evolvesTo ? `evolui no ${sp.evolveLevel}` : '';
-    return `
-      <div class="mon ${isLead ? 'lead' : ''}">
-        <div class="portrait">${spr(c.species, { shiny: c.shiny, size: 48 })}</div>
-        <div>
-          <div class="nm">${esc(nameOf(c))} ${genderIcon(c)} ${isLead ? '<span class="tag">LÍDER</span>' : ''} ${statusBadge(c.status)}</div>
-          <div class="sub">Nv ${c.level} ${typeBadge(sp.type)} <span>${evo}</span></div>
-          <div class="bars">${bar(c.hp / max, 'var(--hp)')}${bar(c.xp / need, 'var(--xp)')}</div>
-          <div class="nums">HP ${Math.round(c.hp)}/${max} · XP ${c.xp}/${need}</div>
-        </div>
-        <div class="actions">
-          ${isLead ? '' : `<button class="btn primary" data-cmd="setLead" data-uid="${c.uid}">★ Líder</button>`}
-          <button class="btn" data-cmd="toBox" data-uid="${c.uid}" ${state.team.length <= 1 ? 'disabled' : ''}>→ Caixa</button>
-          <button class="btn" data-cmd="genes" data-uid="${c.uid}">Atributos</button>
-          <button class="btn" data-cmd="editMoves" data-uid="${c.uid}">Golpes${c.known.length > c.moves.length ? ` <span class="new">${c.known.length - c.moves.length}</span>` : ''}</button>
-        </div>
-        <div class="moves">${c.moves.map((id) => moveChip(id, c)).join('')}</div>
-        ${heldRow(c)}
-        ${editing === c.uid ? moveEditor(c) : ''}
-        ${genesOf === c.uid ? genesBox(c) : ''}
-      </div>`;
-  }
-
-  const views = {
     team() {
       const lead = G.getLead(state);
-      return `<div class="card"><h2>Equipe <span>${state.team.length}/${G.TEAM_MAX}</span></h2>${state.team.map((c) => monCard(c, lead)).join('')}</div>`;
+      const slots = Array.from({ length: G.TEAM_MAX }, (_, i) => state.team[i] || null);
+      return {
+        head: tabs(SECTIONS.team.tabs.map(([id, l]) => [id, id === 'team' ? `${l} ${state.team.length}/${G.TEAM_MAX}` : id === 'box' && state.box.length ? `${l} ${state.box.length}` : l]), 'team') + sects('team'),
+        body: `<div class="team">${slots.map((c) => teamCard(c, lead)).join('')}</div>`,
+        foot: `<span class="hint dts grow">Toque num bicho pra ver o resumo</span><button class="tbtn green" data-cmd="tab" data-screen="box">Trocar</button>${closeBtn()}`,
+      };
+    },
+
+    summary() {
+      const list = nav.from === 'box' ? state.box : state.team;
+      let c = byUid(nav.uid);
+      if (!c) { c = list[0] || state.team[0]; nav.uid = c?.uid; }
+      if (!c) return screens.team();
+      const sp = G.SPECIES[c.species];
+      const lead = G.getLead(state);
+      const inTeam = state.team.includes(c);
+      const idx = Math.max(0, (inTeam ? state.team : state.box).indexOf(c));
+      const n = (inTeam ? state.team : state.box).length;
+      let right = '';
+      if (nav.sumTab === 'status') {
+        const st = G.stats(c), nat = G.NATURES[c.nature] || {};
+        right = `<div class="line" style="justify-content:space-between"><span class="lbl">TEMPERAMENTO</span><span class="dts" style="font-size:14px;font-weight:600">${esc(nat.name || '—')}${nat.up ? ` <span class="muted" style="font-size:12px">+${G.STAT_LABEL[nat.up].slice(0, 3)} −${G.STAT_LABEL[nat.down].slice(0, 3)}</span>` : ''}</span></div>
+          ${G.STAT_KEYS.map((k) => {
+            const iv = c.ivs[k], ef = c.effort[k], item = G.gritFor(ef), have = item ? state.items[item] || 0 : 0;
+            const r = iv >= 31 ? 5 : iv >= 30 ? 4 : iv >= 26 ? 3 : iv >= 16 ? 2 : iv >= 1 ? 1 : 0;
+            const mark = nat.up === k ? '<span class="up">▲</span>' : nat.down === k ? '<span class="down">▼</span>' : '';
+            return `<div class="gene"><span class="k">${G.STAT_LABEL[k]} ${mark}</span><span class="v">${st[k]}</span>
+              <span style="display:flex;flex-direction:column;gap:2px"><span class="iv r${r}" title="IV ${iv}/31">${G.ivRating(iv)}</span><span class="pips" title="Esforço ${ef}/${G.EFFORT_MAX}">${Array.from({ length: G.EFFORT_MAX }, (_, i) => `<i class="${i < ef ? 'on' : ''}"></i>`).join('')}</span></span>
+              <button class="grit" data-cmd="grit" data-uid="${c.uid}" data-stat="${k}" ${item && have ? '' : 'disabled'} title="${item ? `Usar ${esc(G.SHOP[item].name)} (tem ${have})` : 'Esforço no máximo'}">+</button></div>`;
+          }).join('')}`;
+      } else if (nav.sumTab === 'moves') {
+        const owned = Object.keys(G.HELD).filter((id) => (state.items[id] || 0) > 0 && id !== c.held);
+        const cur = c.held && G.HELD[c.held];
+        right = `<div class="moves">${c.moves.map((id) => {
+            const m = G.MOVES[id];
+            return `<button class="move" style="--t:${TYPE_DS[m.type]}" data-cmd="moveInfo" data-move="${id}" data-uid="${c.uid}"><b>${esc(m.name)}</b><span>${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power} · ${c.pp?.[id] ?? m.pp}/${m.pp} PP</span></button>`;
+          }).join('')}</div>
+          <button class="tbtn slate sm" data-cmd="editMoves" data-uid="${c.uid}">Trocar golpes${c.known.length > c.moves.length ? ` (${c.known.length - c.moves.length} novo${c.known.length - c.moves.length > 1 ? 's' : ''})` : ''}</button>
+          <div class="held" style="margin-top:auto"><span class="lbl">SEGURANDO</span>${cur ? spr(c.held, { item: true, size: 20 }) : ''}
+            <select data-hold="${c.uid}" ${!cur && !owned.length ? 'disabled' : ''}>
+              <option value="">${cur ? 'Tirar item' : 'Nenhum'}</option>${cur ? `<option value="${c.held}" selected>${esc(cur.name)}</option>` : ''}
+              ${owned.map((id) => `<option value="${id}">${esc(G.HELD[id].name)} (${state.items[id]})</option>`).join('')}
+            </select></div>
+          ${cur ? `<span class="muted" style="font-size:12px;font-weight:600">${esc(cur.desc)}</span>` : ''}`;
+      } else {
+        const nat = G.NATURES[c.nature];
+        const met = c.met || {};
+        const how = { capturado: 'Capturado em', ovo: 'Nasceu na', inicial: 'Parceiro desde', antigo: 'Com você desde' }[met.how] || 'Origem';
+        const where = met.how === 'ovo' ? 'creche' : met.zone ? zoneOf(met.zone).name : '—';
+        const ms = Date.now() - (met.at || Date.now());
+        const hours = Math.floor(ms / 3600000), mins = Math.floor((ms % 3600000) / 60000);
+        const need = G.xpToNext(c.level);
+        const rows = [
+          ['Temperamento', nat ? nat.name : '—'], [how, where], ['No nível', met.level ?? '—'],
+          ['Tempo junto', `${hours ? `${hours}h ` : ''}${mins}min`], ['Passos', fmt(c.steps || 0)],
+          ['Gosta de', DX.INFO[c.species]?.likes || '—'],
+        ];
+        right = `<dl class="rows">${rows.map(([k, v], i) => `<dt class="${i % 2 ? '' : 'z'}">${k}</dt><dd class="${i % 2 ? '' : 'z'}">${esc(v)}</dd>`).join('')}</dl>
+          <div class="xpline"><div class="top"><span class="lbl">EXP PARA O NV${c.level + 1}</span><span class="dts" style="font-size:14px;font-weight:600">faltam ${fmt(need - c.xp)}</span></div>
+            <div class="bar2"><span><i style="width:${(G.clamp(c.xp / need, 0, 1) * 100).toFixed(1)}%;background:linear-gradient(#8cd0ff 0 45%, #3896e8 45% 100%)"></i></span></div></div>`;
+      }
+      return {
+        head: tabs([['info', 'INFO'], ['status', 'STATUS'], ['moves', 'GOLPES']], nav.sumTab, 'sumtab') + `<span class="num-pill" style="margin-left:auto">${dexNo(c.species)}</span>`,
+        body: `<div class="plate left-plate">${portrait(c.species, { shiny: c.shiny })}
+            <div class="meta">
+              <div class="line"><h2 class="dts">${esc(sp.name)}${c.shiny ? ' ✦' : ''}</h2>${gender(c)}${lvl(c.level)}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">${typeBadge(sp.type)}${statusTag(c.status)}</div>
+              <span class="muted" style="font-size:12px;font-weight:600">${inTeam ? 'Na equipe' : 'Na caixa'} · IV ${G.ivPercent(c)}%</span>
+            </div></div>
+          <div class="plate right-plate">${right}</div>`,
+        foot: `<button class="tbtn slate sq" data-cmd="sumPrev" aria-label="Anterior">${svg('left', 14)}</button>
+          <span class="hint dts">${idx + 1} de ${n}</span>
+          <button class="tbtn slate sq" data-cmd="sumNext" aria-label="Próximo">${svg('right', 14)}</button>
+          <span class="grow"></span>
+          ${inTeam && c.uid !== lead?.uid ? `<button class="tbtn orange" data-cmd="setLead" data-uid="${c.uid}">Definir líder</button>` : ''}
+          ${inTeam ? `<button class="tbtn slate" data-cmd="toBox" data-uid="${c.uid}" ${state.team.length <= 1 ? 'disabled' : ''}>Caixa</button>`
+            : `<button class="tbtn green" data-cmd="toTeam" data-uid="${c.uid}" ${state.team.length >= G.TEAM_MAX ? 'disabled' : ''}>Equipe</button>`}
+          ${closeBtn('Voltar', 'back')}`,
+      };
     },
 
     box() {
-      if (!state.box.length) return '<div class="card empty">A caixa está vazia.<br><span class="muted">Quando a equipe enche, as capturas vêm pra cá.</span></div>';
-      const full = state.team.length >= G.TEAM_MAX;
-      const all = state.box;
-      for (const u of [...selected]) if (!all.some((c) => c.uid === u)) selected.delete(u); // limpa quem saiu
-      const list = all.filter((c) => G.matchesFilter(c, boxFilter));
+      const box = state.box;
+      for (const u of [...selected]) if (!box.some((c) => c.uid === u)) selected.delete(u);
+      const list = box.filter((c) => G.matchesFilter(c, boxFilter));
       const sorters = {
-        recent: (a, b) => all.indexOf(b) - all.indexOf(a),
+        recent: (a, b) => box.indexOf(b) - box.indexOf(a),
         species: (a, b) => G.SPECIES_ORDER.indexOf(a.species) - G.SPECIES_ORDER.indexOf(b.species) || b.level - a.level,
         level: (a, b) => b.level - a.level,
         iv: (a, b) => G.ivPercent(b) - G.ivPercent(a),
       };
       list.sort(sorters[boxSort] || sorters.recent);
-      const releasable = (arr) => arr.filter((c) => !c.locked);
-      const selCount = selected.size;
-      const filtRel = releasable(list).length;
-      const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
-      const species = [...new Set(all.map((c) => c.species))].sort((a, b) => G.SPECIES_ORDER.indexOf(a) - G.SPECIES_ORDER.indexOf(b));
-      const ivClass = (p) => (p >= 90 ? 'r5' : p >= 75 ? 'r4' : p >= 60 ? 'r3' : p >= 40 ? 'r2' : 'r1');
-      return `<div class="card"><h2>Caixa <span>${all.length}</span></h2>
-        <div class="filters">
-          <select data-f="species">${opt('', 'Todas as espécies', boxFilter.species)}${species.map((sp) => opt(sp, esc(G.SPECIES[sp].name), boxFilter.species)).join('')}</select>
-          <span class="frow">
-            <select data-f="natureNot">${opt('', 'Natureza é', boxFilter.natureNot)}${opt('1', 'Natureza não é', boxFilter.natureNot)}</select>
-            <select data-f="nature">${opt('', 'qualquer', boxFilter.nature)}${opt('_neutral', 'neutra', boxFilter.nature)}${Object.entries(G.NATURES).filter(([, n]) => n.up).map(([id, n]) => opt(id, `${esc(n.name)} (+${G.STAT_LABEL[n.up].slice(0, 3)} −${G.STAT_LABEL[n.down].slice(0, 3)})`, boxFilter.nature)).join('')}</select>
-          </span>
-          <span class="frow">IV
-            <input type="number" min="0" max="100" placeholder="0" data-f="minIv" value="${esc(boxFilter.minIv)}"> a
-            <input type="number" min="0" max="100" placeholder="100" data-f="maxIv" value="${esc(boxFilter.maxIv)}"> %
-          </span>
-          <span class="frow">
-            <select data-f="shiny">${opt('', 'Brilhante: tanto faz', boxFilter.shiny)}${opt('only', 'Só brilhantes', boxFilter.shiny)}${opt('no', 'Sem brilhantes', boxFilter.shiny)}</select>
-            <select data-f="gender">${opt('', 'Sexo: tanto faz', boxFilter.gender)}${opt('M', '♂ Macho', boxFilter.gender)}${opt('F', '♀ Fêmea', boxFilter.gender)}</select>
-          </span>
-          <span class="frow">Ordem
-            <select data-sort>${opt('recent', 'Recentes', boxSort)}${opt('species', 'Espécie', boxSort)}${opt('level', 'Nível', boxSort)}${opt('iv', 'IV', boxSort)}</select>
-            <button class="btn" data-cmd="clearFilter">Limpar filtro</button>
-          </span>
-        </div>
-        <div class="bulk">
-          <span class="muted">${list.length} de ${all.length} no filtro · <b>${selCount}</b> selecionado(s)</span>
-          <div class="btn-row">
-            <button class="btn" data-cmd="selectFiltered">Selecionar filtrados</button>
-            <button class="btn" data-cmd="clearSel" ${selCount ? '' : 'disabled'}>Limpar seleção</button>
-            <button class="btn danger" data-cmd="releaseSel" ${selCount ? '' : 'disabled'}>Soltar selecionados (${selCount})</button>
-            <button class="btn danger" data-cmd="releaseFiltered" ${filtRel ? '' : 'disabled'}>Soltar filtrados (${filtRel})</button>
-          </div>
-          <span class="muted small">Trancados 🔒 nunca são soltos. Soltar dá moedas e, às vezes, itens de esforço.</span>
-        </div>
-        <div class="box">
-        ${list.slice(0, BOX_SHOW_MAX).map((c) => {
-          const iv = G.ivPercent(c), nat = G.NATURES[c.nature];
-          const sel = selected.has(c.uid);
-          return `
-          <div class="box-item ${sel ? 'sel' : ''} ${c.locked ? 'locked' : ''}" data-sel="${c.uid}">
-            <button class="lock" data-cmd="lock" data-uid="${c.uid}" title="${c.locked ? 'Destrancar' : 'Trancar (não pode ser solto)'}">${c.locked ? '🔒' : '🔓'}</button>
-            <span class="check">${sel ? '✓' : ''}</span>
-            ${spr(c.species, { shiny: c.shiny, size: 48 })}
-            <span class="nm">${esc(nameOf(c))} ${genderIcon(c)}</span>
-            <span class="muted">Nv ${c.level} · ${esc(nat ? nat.name : '')}</span>
-            <span class="iv ${ivClass(iv)}" title="IV total ${iv}% · ${G.perfectIvs(c)} perfeito(s)">IV ${iv}%</span>
-            <button class="btn" data-cmd="toTeam" data-uid="${c.uid}" ${full ? 'disabled title="Equipe cheia"' : ''}>→ Equipe</button>
-          </div>`;
-        }).join('')}
-        </div>
-        ${list.length > BOX_SHOW_MAX ? `<p class="muted">Mostrando ${BOX_SHOW_MAX} de ${list.length}. Use o filtro pra achar os outros.</p>` : ''}
-      </div>`;
+      const opt = (v, l, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+      const species = [...new Set(box.map((c) => c.species))].sort((a, b) => G.SPECIES_ORDER.indexOf(a) - G.SPECIES_ORDER.indexOf(b));
+      const releasable = list.filter((c) => !c.locked).length;
+      return {
+        head: tabs(SECTIONS.team.tabs.map(([id, l]) => [id, id === 'team' ? `${l} ${state.team.length}/${G.TEAM_MAX}` : id === 'box' ? `${l} ${box.length}` : l]), 'box') + sects('team'),
+        body: `<div class="plate panel">
+            <div class="filters">
+              <select data-f="species">${opt('', 'Espécie', boxFilter.species)}${species.map((s) => opt(s, esc(G.SPECIES[s].name), boxFilter.species)).join('')}</select>
+              <select data-f="natureNot">${opt('', 'Nat. é', boxFilter.natureNot)}${opt('1', 'Nat. não é', boxFilter.natureNot)}</select>
+              <select data-f="nature">${opt('', 'qualquer', boxFilter.nature)}${opt('_neutral', 'neutra', boxFilter.nature)}${Object.entries(G.NATURES).filter(([, n]) => n.up).map(([id, n]) => opt(id, esc(n.name), boxFilter.nature)).join('')}</select>
+              IV<input type="number" min="0" max="100" placeholder="0" data-f="minIv" value="${esc(boxFilter.minIv)}">a<input type="number" min="0" max="100" placeholder="100" data-f="maxIv" value="${esc(boxFilter.maxIv)}">
+              <select data-f="shiny">${opt('', '✦ tanto faz', boxFilter.shiny)}${opt('only', 'só ✦', boxFilter.shiny)}${opt('no', 'sem ✦', boxFilter.shiny)}</select>
+              <select data-sort>${opt('recent', 'Recentes', boxSort)}${opt('species', 'Espécie', boxSort)}${opt('level', 'Nível', boxSort)}${opt('iv', 'IV', boxSort)}</select>
+            </div>
+            <div class="scroll"><div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+              ${list.length ? list.slice(0, 240).map((c) => `<div class="mini${selected.has(c.uid) ? ' sel' : ''}${c.locked ? ' locked' : ''}" data-cmd="summary" data-uid="${c.uid}" data-from="box">
+                  <span class="ck" data-cmd="sel" data-uid="${c.uid}">${selected.has(c.uid) ? '✓' : ''}</span>
+                  <button class="lk" data-cmd="lock" data-uid="${c.uid}" title="${c.locked ? 'Destrancar' : 'Trancar'}">${c.locked ? '🔒' : '🔓'}</button>
+                  ${spr(c.species, { shiny: c.shiny, size: 36 })}<b>${esc(G.SPECIES[c.species].name)}</b><span class="muted">Nv${c.level} · IV ${G.ivPercent(c)}%</span>
+                </div>`).join('') : `<p class="muted" style="grid-column:1/-1;font-size:14px;font-weight:600">${box.length ? 'Nada passa nesse filtro.' : 'A caixa está vazia. Quando a equipe enche, as capturas vêm pra cá.'}</p>`}
+            </div></div>
+          </div>`,
+        foot: `<span class="hint dts grow">${selected.size} marcado(s) · ${list.length} no filtro</span>
+          <button class="tbtn slate sm" data-cmd="selFiltered">Marcar filtro</button>
+          <button class="tbtn red sm" data-cmd="release" ${selected.size || releasable ? '' : 'disabled'}>Soltar${selected.size ? ` (${selected.size})` : ''}</button>
+          ${closeBtn()}`,
+      };
     },
 
     daycare() {
       const dc = state.daycare || { mons: [] };
       const eggs = state.eggs || [];
       const [a, b] = dc.mons;
-      const chance = G.breedChance(a, b);
-      const slot = (c) => c ? `
-        <div class="dc-slot">
-          ${spr(c.species, { shiny: c.shiny, size: 56 })}
-          <b>${esc(nameOf(c))} ${genderIcon(c)}</b>
-          <span class="muted">nv ${c.level}${c.held ? ` · ${esc(G.HELD[c.held].name)}` : ''}</span>
-          <button class="btn" data-cmd="daycareTake" data-uid="${c.uid}">Buscar</button>
-        </div>` : '<div class="dc-slot empty"><span class="muted">Vaga livre</span></div>';
-      const mood = dc.mons.length < 2 ? 'Deixe dois bichos de sexos opostos e do mesmo grupo de ovo.' : G.breedMood(chance);
-      const pick = [...state.team, ...state.box];
+      const ch = G.breedChance(a, b);
+      const slot = (c) => (c ? `<div class="dcslot">${spr(c.species, { shiny: c.shiny, size: 44 })}<b class="dts">${esc(G.SPECIES[c.species].name)} ${gender(c)}</b><span class="muted">Nv${c.level}${c.held ? ` · ${esc(G.HELD[c.held].name)}` : ''}</span>
+          <button class="tbtn slate sm" data-cmd="daycareTake" data-uid="${c.uid}">Buscar</button></div>` : '<div class="dcslot empty">vaga livre</div>');
       const full = dc.mons.length >= G.DAYCARE_MAX;
-      return `
-        <div class="card"><h2>Creche <span>${dc.mons.length}/${G.DAYCARE_MAX}</span></h2>
-          <div class="dc">${slot(a)}<span class="dc-heart ${chance ? 'on' : ''}">${chance >= 0.5 ? '♥♥' : chance ? '♥' : '·'}</span>${slot(b)}</div>
-          <p class="dc-mood">${esc(mood)}${dc.egg ? ' <b>Tem um ovo esperando espaço!</b>' : ''}</p>
-          <p class="muted" style="margin:0">O filhote é da forma base da mãe, herda 3 IVs dos pais (5 com <b>Laço do Destino</b>)
-            e a natureza de quem segura a <b>Pedra Eterna</b>.</p>
-        </div>
-
-        <div class="card"><h2>Ovos <span>${eggs.length}/${G.EGGS_MAX}</span></h2>
-          ${eggs.length ? `<div class="eggs">${eggs.map((e) => `
-            <div class="egg" data-egg="${e.id}">
-              ${spr('_egg', { size: 40 })}
-              <div class="grow">
-                <b>Ovo</b> <span class="muted egg-hint"></span>
-                <div class="bar"><i class="egg-bar" style="background:var(--gold)"></i></div>
-                <span class="nums egg-left"></span>
-              </div>
-            </div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nenhum ovo. Os ovos chocam com o tempo de jogo, inclusive com o app fechado.</p>'}
-        </div>
-
-        <div class="card"><h2>Deixar na creche</h2>
-          <div class="dc-pick">${pick.map((c) => {
-            const fit = a && !b ? G.breedChance(a, c) : null;
-            return `<div class="dc-row">
-              ${spr(c.species, { shiny: c.shiny, size: 28 })}
-              <span class="grow">${esc(nameOf(c))} ${genderIcon(c)} <span class="muted">nv ${c.level} · ${SPECIES_EGG(c)}</span></span>
-              ${fit != null ? `<span class="muted">${fit >= 0.5 ? '♥♥' : fit ? '♥' : '✕'}</span>` : ''}
-              <button class="btn" data-cmd="daycarePut" data-uid="${c.uid}" ${full || (state.team.includes(c) && state.team.length <= 1) ? 'disabled' : ''}>Deixar</button>
-            </div>`;
-          }).join('')}</div>
-        </div>`;
-    },
-
-    zones() {
-      const open = G.unlockedZones(state).map((z) => z.id);
-      return `<div class="card"><h2>Zonas</h2><div class="zones">
-        ${G.ZONES.map((z) => {
-          const ok = open.includes(z.id), here = state.zone === z.id;
-          return `<button class="zone ${here ? 'on' : ''}" data-cmd="zone" data-id="${z.id}" ${ok ? '' : 'disabled'} style="--zone:${z.color}">
-            <div class="preview" style="${zonePreview(z.id)}"></div>
-            ${here ? '<span class="tag here">AQUI</span>' : ''}
-            <div class="zt"><b>${esc(z.name)}</b><span class="muted">${ok ? `nv ${z.levels[0]}–${z.levels[1]}` : `🔒 líder nv ${z.unlock}`}</span></div>
-          </button>`;
-        }).join('')}
-      </div></div>`;
+      return {
+        head: tabs(SECTIONS.team.tabs.map(([id, l]) => [id, id === 'team' ? `${l} ${state.team.length}/${G.TEAM_MAX}` : id === 'box' && state.box.length ? `${l} ${state.box.length}` : l]), 'daycare') + sects('team'),
+        body: `<div class="plate panel"><div class="scroll" style="display:flex;flex-direction:column;gap:8px">
+            <div class="slots">${slot(a)}<span class="heart${ch ? ' on' : ''}">${ch >= 0.5 ? '♥♥' : ch ? '♥' : '·'}</span>${slot(b)}</div>
+            ${eggs.length ? eggs.map((e) => `<div class="egg" data-egg="${e.id}">${spr('_egg', { size: 28 })}<span class="grow" style="display:flex;flex-direction:column;gap:3px"><span><b>Ovo</b> <span class="muted egg-hint"></span></span>
+              <span class="bar2"><span><i class="egg-bar" style="background:linear-gradient(#fce07a 0 45%, #f0a818 45% 100%)"></i></span></span></span><span class="muted egg-left"></span></div>`).join('')
+              : '<p class="muted" style="margin:0;font-size:13px;font-weight:600">Sem ovos. Eles chocam com o tempo de jogo.</p>'}
+            <span class="lbl">DEIXAR NA CRECHE</span>
+            ${all().map((c) => {
+              const fit = a && !b ? G.breedChance(a, c) : null;
+              return `<div class="lrow">${spr(c.species, { shiny: c.shiny, size: 28 })}<span class="t"><b>${esc(G.SPECIES[c.species].name)} ${gender(c)}</b><span>Nv${c.level}${fit != null ? ` · ${fit >= 0.5 ? '♥♥' : fit ? '♥' : '✕'}` : ''}</span></span>
+                <button class="tbtn slate sm" data-cmd="daycarePut" data-uid="${c.uid}" ${full || (state.team.includes(c) && state.team.length <= 1) ? 'disabled' : ''}>Deixar</button></div>`;
+            }).join('')}
+          </div></div>`,
+        foot: `<span class="hint dts grow">${esc(dc.mons.length < 2 ? 'Deixe um casal do mesmo grupo de ovo.' : G.breedMood(ch))}</span>${closeBtn()}`,
+      };
     },
 
     shop() {
-      return `<div class="card"><h2>Loja <span>${state.coins} moedas</span></h2><div class="shop">
-        ${Object.entries(G.SHOP).map(([id, it]) => `
-          <div class="row">
-            ${spr(id, { item: true, size: 32 })}
-            <span class="label"><b>${esc(it.name)}</b><span class="muted">${it.price}${coin()} · ${it.grit
-              ? `esforço ${it.grit[0] === it.grit[1] ? it.grit[0] : `${it.grit[0]}–${it.grit[1]}`} → +1`
-              : `${it.mult}× chance`} · você tem ${state.items[id] || 0}</span></span>
-            <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
-            <button class="btn" data-cmd="buy" data-item="${id}" data-qty="5" ${state.coins < it.price * 5 ? 'disabled' : ''}>+5</button>
-          </div>`).join('')}
-      </div></div>
-      <div class="card"><h2>Itens de segurar <span>1 por criatura</span></h2><div class="shop">
-        ${Object.entries(G.HELD).map(([id, it]) => `
-          <div class="row">
-            ${spr(id, { item: true, size: 28 })}
-            <span class="label"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
-              <span class="muted">${it.price}${coin()} · na mochila ${state.items[id] || 0} · em uso ${[...state.team, ...state.box].filter((c) => c.held === id).length}</span></span>
-            <button class="btn" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
-          </div>`).join('')}
-      </div></div>`;
+      const row = (id, it, kind) => `<div class="lrow">${spr(id, { item: true, size: 28 })}<span class="t"><b>${esc(it.name)}</b><span>${esc(kind)}</span></span>
+        <span class="dts" style="font-size:14px;font-weight:700;white-space:nowrap">${fmt(it.price)}</span>
+        <button class="tbtn green sm" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
+        ${kind.startsWith('tem') ? `<button class="tbtn green sm" data-cmd="buy" data-item="${id}" data-qty="5" ${state.coins < it.price * 5 ? 'disabled' : ''}>+5</button>` : ''}</div>`;
+      const caps = Object.entries(G.SHOP).filter(([, it]) => !it.grit);
+      const grit = Object.entries(G.SHOP).filter(([, it]) => it.grit);
+      return {
+        head: tabs(SECTIONS.bag.tabs, 'shop') + `<span class="num-pill" style="gap:6px;margin-left:8px">${A.ui('coin') ? `<img src="${A.ui('coin').img.src}" width="14" height="14" alt="">` : ''}${fmt(state.coins)}</span>` + sects('bag'),
+        body: `<div class="plate panel"><div class="scroll">
+            <span class="lbl">CÁPSULAS</span>${caps.map(([id, it]) => row(id, it, `tem ${state.items[id] || 0} · ${it.mult}× chance`)).join('')}
+            <span class="lbl">ESFORÇO</span>${grit.map(([id, it]) => row(id, it, `tem ${state.items[id] || 0} · nível ${it.grit[0]}${it.grit[1] !== it.grit[0] ? `–${it.grit[1]}` : ''} → +1`)).join('')}
+            <span class="lbl">ITENS DE SEGURAR</span>${Object.entries(G.HELD).map(([id, it]) => row(id, it, `${state.items[id] ? `${state.items[id]} na mochila · ` : ''}${it.desc}`)).join('')}
+          </div></div>`,
+        foot: `<span class="hint dts grow">Itens de segurar: no resumo do bicho → GOLPES</span>${closeBtn()}`,
+      };
     },
 
     tms() {
       const ids = Object.keys(G.TMS);
       const owned = ids.filter((t) => G.hasTm(state, t)).length;
-      const card = (t) => {
-        const tm = G.TMS[t], m = G.MOVES[tm.move], have = G.hasTm(state, t);
-        const canTeach = have && [...state.team, ...state.box].some((c) => G.canLearnTm(c, t) && !c.moves.includes(tm.move));
-        let foot;
-        if (have) foot = `<span class="tag">TENHO</span>${canTeach ? '<span class="muted">pode ensinar</span>' : ''}`;
-        else if (tm.price != null) foot = `<span class="muted">${tm.price}${coin()}</span>`;
-        else foot = `<span class="tag excl">EXCLUSIVA</span><span class="muted">${tm.drop.map((z) => esc(G.ZONES.find((x) => x.id === z).name)).join(', ')}</span>`;
-        return `<button class="tm ${have ? 'have' : ''}" style="--t:${G.TYPE_COLOR[m.type]}" data-cmd="tmInfo" data-tm="${t}">
-          <span class="tm-no">${t.toUpperCase()}</span>
-          <b>${esc(m.name)}</b>
-          <span class="tm-meta">${G.TYPE_LABEL[m.type]} · ${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power}</span>
-          <span class="tm-foot">${foot}</span>
-        </button>`;
+      return {
+        head: tabs(SECTIONS.bag.tabs, 'tms') + `<span class="num-pill" style="margin-left:8px">${owned}/${ids.length}</span>` + sects('bag'),
+        body: `<div class="plate panel"><div class="scroll"><div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+            ${ids.map((t) => {
+              const tm = G.TMS[t], m = G.MOVES[tm.move], have = G.hasTm(state, t);
+              return `<button class="tmcard${have ? ' have' : ''}" style="--t:${TYPE_DS[m.type]}" data-cmd="tmInfo" data-tm="${t}">
+                <span class="no">${t.toUpperCase()}${have ? ' ✓' : ''}</span><b>${esc(m.name)}</b>
+                <span>${have ? 'Você tem' : tm.price != null ? `${fmt(tm.price)} moedas` : `Exclusiva · ${tm.drop.map((z) => zoneOf(z).name).join(', ')}`}</span></button>`;
+            }).join('')}</div></div></div>`,
+        foot: `<span class="hint dts grow">MTs não se gastam: compre uma vez, ensine pra todos.</span>${closeBtn()}`,
       };
-      return `<div class="card"><h2>Máquinas de técnica <span>${owned}/${ids.length}</span></h2>
-        <p class="muted" style="margin:0 0 10px">MTs ensinam golpes e não se gastam: compre uma vez e ensine pra todo mundo compatível.
-          As exclusivas só caem de batalhas na zona indicada.</p>
-        <div class="tms">${ids.map(card).join('')}</div>
-      </div>`;
     },
 
     dex() {
-      const caught = G.SPECIES_ORDER.filter((id) => state.dex.caught[id]).length;
-      return `<div class="card"><h2>Bestiário <span>${caught}/${G.SPECIES_ORDER.length}</span></h2>
-        <div class="progress"><i style="width:${(caught / G.SPECIES_ORDER.length) * 100}%"></i></div>
-        <div class="dex">
-          ${G.SPECIES_ORDER.map((id, i) => {
-            const c = state.dex.caught[id], s = state.dex.seen[id];
-            return `<div class="${c ? 'caught' : s ? 'seen' : ''}" title="${s ? esc(G.SPECIES[id].name) : '???'}">
-              <span class="no">#${String(i + 1).padStart(2, '0')}</span>
-              ${spr(id, { size: 40, silhouette: !s })}
-              <span>${s ? esc(G.SPECIES[id].name) : '???'}${c ? ' ◓' : ''}</span>
-            </div>`;
-          }).join('')}
-        </div></div>`;
+      const ids = G.SPECIES_ORDER;
+      const shown = ids.filter((id) => nav.dexFilter === 'caught' ? state.dex.caught[id] : nav.dexFilter === 'seen' ? state.dex.seen[id] : true);
+      if (nav.dexSel >= ids.length) nav.dexSel = 0;
+      const sel = ids[nav.dexSel];
+      const seen = state.dex.seen[sel], caught = state.dex.caught[sel];
+      const sp = G.SPECIES[sel];
+      const nCaught = ids.filter((id) => state.dex.caught[id]).length, nSeen = ids.filter((id) => state.dex.seen[id]).length;
+      const firstSeen = state.dex.seenAt?.[sel];
+      return {
+        head: `<div class="pill"><h1 style="letter-spacing:3px">DEX</h1></div>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#2c3a38">${capIcon()}Capturados <strong style="font-size:16px">${nCaught}</strong></span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#2c3a38">${svg('eye', 16)}Vistos <strong style="font-size:16px">${nSeen}</strong></span>${sects('dex').replace('margin-left:auto', '')}`,
+        body: `<div class="plate left-plate">${portrait(sel, { height: 118, small: true, silhouette: !seen })}
+            <div class="meta">
+              <div class="line" style="justify-content:space-between"><span class="lbl" style="font-size:13px">${dexNo(sel)}</span><span class="tag">${caught ? 'CAPTURADO' : seen ? 'VISTO' : '???'}</span></div>
+              <div class="line" style="align-items:center;gap:8px"><span class="dts" style="font-size:22px;font-weight:600;line-height:1">${seen ? esc(sp.name) : '???'}</span>${seen ? typeBadge(sp.type, true) : ''}</div>
+              <p style="margin:0;font-size:13px;font-weight:500;color:#4a4a54;line-height:1.25">${!seen ? 'Ainda não visto. Continue explorando!' : caught ? esc(DX.INFO[sel]?.cat || '') + '. Veja o registro completo.' : `Visto${firstSeen ? ` ${esc(naZona(firstSeen))}` : ''}. Capture um pra liberar o registro completo.`}</p>
+            </div></div>
+          <div class="plate dexlist"><ul class="scroll" style="flex:1">
+            ${shown.map((id) => {
+              const i = ids.indexOf(id), s = state.dex.seen[id], c = state.dex.caught[id];
+              return `<li><button class="drow${i === nav.dexSel ? ' on' : ''}" data-cmd="dexSel" data-i="${i}">
+                <span class="cur">${i === nav.dexSel ? '▶' : ''}</span><span class="no">${dexNo(id).replace('Nº ', 'Nº')}</span>
+                <span class="ic">${spr(id, { size: 28, silhouette: !s })}</span><span class="nm dts">${s ? esc(G.SPECIES[id].name) : '???'}</span>
+                ${c ? capIcon() : s ? '<span class="tag flat">VISTO</span>' : ''}</button></li>`;
+            }).join('') || '<li class="muted" style="padding:10px;font-size:14px;font-weight:600">Nenhum nesse filtro.</li>'}
+          </ul></div>`,
+        foot: `<button class="tbtn slate" data-cmd="dexFilter">${svg('filter', 16)}Filtrar</button>
+          <span class="hint dts grow">${{ all: 'Todos', caught: 'Capturados', seen: 'Vistos' }[nav.dexFilter]} · Ordem: Nº</span>
+          <button class="tbtn orange" data-cmd="dexEntry" ${seen ? '' : 'disabled'}>Ver registro</button>${closeBtn()}`,
+      };
+    },
+
+    entry() {
+      const ids = G.SPECIES_ORDER;
+      const sel = ids[nav.dexSel] || ids[0];
+      const sp = G.SPECIES[sel], info = DX.INFO[sel] || {};
+      const seen = state.dex.seen[sel], caught = state.dex.caught[sel];
+      if (!seen) { nav.screen = 'dex'; return screens.dex(); }
+      const inTeam = state.team.filter((c) => c.species === sel).length;
+      const zones = G.ZONES.filter((z) => z.pool[sel]);
+      let right;
+      if (nav.dexTab === 'area') {
+        right = `<span class="lbl">ONDE APARECE</span>
+          ${zones.length ? zones.map((z) => {
+            const total = Object.values(z.pool).reduce((t, w) => t + w, 0);
+            return `<div class="lrow"><span class="t"><b>${esc(z.name)}</b><span>nível ${z.levels[0]}–${z.levels[1]}</span></span><span class="tag">${Math.round((z.pool[sel] / total) * 100)}%</span></div>`;
+          }).join('') : '<p class="muted" style="margin:0;font-size:14px;font-weight:600">Não aparece na natureza. Evolui de outra espécie.</p>'}
+          ${sp.evolvesTo ? `<span class="muted" style="font-size:13px;font-weight:600;margin-top:auto">Evolui para ${esc(G.SPECIES[sp.evolvesTo].name)} no nível ${sp.evolveLevel}.</span>` : ''}`;
+      } else if (nav.dexTab === 'size') {
+        const ref = 1.6; // treinador
+        const hMax = Math.max(ref, info.height || 1);
+        right = `<span class="lbl">TAMANHO COMPARADO A UMA PESSOA (1,6 m)</span>
+          <div style="flex:1;display:flex;align-items:flex-end;justify-content:center;gap:40px;padding:8px 0 4px;border-bottom:3px solid #c4c8b8">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:26px;height:${Math.round((ref / hMax) * 150)}px;background:#6a7890;border-radius:13px 13px 4px 4px"></div><span class="muted" style="font-size:12px;font-weight:600">Você</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:${Math.max(18, Math.round(((info.height || 0.5) / hMax) * 150))}px;display:flex;align-items:flex-end">${spr(sel, { size: Math.max(18, Math.min(150, Math.round(((info.height || 0.5) / hMax) * 150))) })}</div><span class="muted" style="font-size:12px;font-weight:600">${esc(sp.name)}</span></div>
+          </div>
+          <div style="display:flex;gap:8px"><div class="stat"><span class="lbl">ALTURA</span><b class="dts">${DX.height(sel)}</b></div><div class="stat"><span class="lbl">PESO</span><b class="dts">${DX.weight(sel)}</b></div></div>`;
+      } else {
+        const firstSeen = state.dex.seenAt?.[sel];
+        right = `<div style="display:flex;gap:8px"><div class="stat"><span class="lbl">ALTURA</span><b class="dts">${DX.height(sel)}</b></div><div class="stat"><span class="lbl">PESO</span><b class="dts">${DX.weight(sel)}</b></div></div>
+          <div style="display:flex;gap:8px"><div class="stat"><span class="lbl">HABITAT</span><b class="dts" style="font-size:15px">${esc(info.habitat || '—')}</b></div><div class="stat" style="flex:0 0 76px"><span class="lbl">NA EQUIPE</span><b class="dts" style="font-size:15px">${inTeam}</b></div></div>
+          <div class="prose"><p>${caught ? esc(info.desc || '') : 'Capture um pra ler o registro completo.'}</p></div>
+          <span class="muted" style="font-size:12px;font-weight:600;line-height:1">${firstSeen ? `Visto pela 1ª vez ${esc(naZona(firstSeen))}` : 'Visto por aí'}</span>`;
+      }
+      return {
+        head: tabs([['reg', 'REGISTRO'], ['area', 'ÁREA'], ['size', 'TAMANHO']], nav.dexTab, 'dextab') + `<span class="num-pill" style="margin-left:auto">${dexNo(sel)}</span>`,
+        body: `<div class="plate left-plate">${portrait(sel, { corner: caught ? `<span class="corner">${capIcon(8, 10)}CAPTURADO</span>` : '' })}
+            <div class="meta"><h2 class="dts" style="font-size:22px">${esc(sp.name)}</h2><span class="muted" style="font-size:13px;font-weight:600;line-height:1">${esc(info.cat || '')}</span>
+              <div style="display:flex;gap:6px">${typeBadge(sp.type)}</div></div></div>
+          <div class="plate right-plate">${right}</div>`,
+        foot: `<button class="tbtn slate sq" data-cmd="dexPrev" aria-label="Anterior">${svg('left', 14)}</button>
+          <span class="hint dts">${String(nav.dexSel + 1).padStart(3, '0')} / ${String(ids.length).padStart(3, '0')}</span>
+          <button class="tbtn slate sq" data-cmd="dexNext" aria-label="Próximo">${svg('right', 14)}</button>
+          <span class="grow"></span>
+          <button class="tbtn orange" data-cmd="cry" data-species="${sel}">${svg('sound', 16)}Ouvir</button>${closeBtn('Voltar', 'back')}`,
+      };
+    },
+
+    zones() {
+      const open = G.unlockedZones(state).map((z) => z.id);
+      return {
+        head: tabs(SECTIONS.opts.tabs, 'zones') + sects('opts'),
+        body: `<div class="plate panel"><div class="scroll"><div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+            ${G.ZONES.map((z, i) => {
+              const ok = open.includes(z.id), here = state.zone === z.id;
+              return `<button class="zonecard${here ? ' on' : ''}" data-cmd="zone" data-id="${z.id}" ${ok ? '' : 'disabled'}>
+                <span class="pv"><i style="background:#c4e6f6"></i><i style="background:${z.color}"></i></span>
+                <span class="zt"><b>${i + 1} · ${esc(z.name)}</b><span>${here ? '<span class="tag gold">AQUI</span>' : ok ? `nv ${z.levels[0]}–${z.levels[1]}` : `🔒 nv ${z.unlock}`}</span></span></button>`;
+            }).join('')}</div></div></div>`,
+        foot: `<span class="hint dts grow">Zonas novas abrem quando o líder sobe de nível.</span>${closeBtn()}`,
+      };
     },
 
     settings() {
-      const custom = A.list();
-      return `
-        <div class="card"><h2>Tela <span>${esc(A.palette.name)}</span></h2>
-          <div class="palettes">${Object.entries(A.PALETTES).map(([id, p]) => `
-            <button class="pal ${A.paletteId === id ? 'on' : ''}" data-cmd="palette" data-id="${id}">
-              ${esc(p.name)}
-              <span class="sw">${[p.frame, p.frame2, p.frame3, p.paper].map((c) => `<i style="background:${c}"></i>`).join('')}</span>
-            </button>`).join('')}
-          </div>
-        </div>
-
-        <div class="card"><h2>Jogo</h2>
-          <div class="setting">
-            <div>Captura<div class="muted">Quando lançar cápsulas sozinho. Clicar no selvagem sempre lança.</div></div>
-            <select id="catchMode">${Object.entries(G.CATCH_MODES).map(([id, label]) => `<option value="${id}" ${state.settings.catchMode === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
-          </div>
-          <div class="setting">
-            <div>Comprar cápsulas sozinho<div class="muted">Quando acabam, compra 5 (se tiver moedas).</div></div>
-            <label class="switch"><input type="checkbox" id="autoBuy" ${state.settings.autoBuy ? 'checked' : ''}><span></span></label>
-          </div>
-          <div class="setting">
-            <div>Aprender golpes sozinho<div class="muted">Com 4 golpes, troca o mais fraco quando aprende um melhor.</div></div>
-            <label class="switch"><input type="checkbox" id="autoMoves" ${state.settings.autoMoves !== false ? 'checked' : ''}><span></span></label>
-          </div>
-          <div class="setting">
-            <div>Recomeçar<div class="muted">Apaga equipe, moedas e bestiário.</div></div>
-            <button class="btn danger" data-cmd="reset">Recomeçar do zero</button>
-          </div>
-        </div>
-
-        <div class="card"><h2>Sprites e tiles <span>${custom.length} arquivo(s)</span></h2>
-          <p class="muted" style="margin:0 0 8px">Coloque PNGs na pasta de sprites e eles substituem a pixel art na hora.
-            Ex.: <code>creatures/pavio.png</code> (quadros lado a lado), <code>tiles/campina_ground.png</code> (chão infinito),
-            <code>ui/hud.png</code> (moldura 9-slice). Detalhes no <code>LEIA-ME.txt</code> da pasta.</p>
-          <div class="btn-row">
-            <button class="btn primary" data-cmd="openSprites">Abrir pasta de sprites</button>
-            <button class="btn" data-cmd="reloadSprites">Recarregar</button>
-          </div>
-          ${custom.length ? `<ul class="files">${custom.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
-        </div>
-
-        <div class="card"><h2>Estatísticas</h2>
-          <div class="stats">
-            <div><b>${state.stats.wins}</b><span>vitórias</span></div>
-            <div><b>${state.stats.battles}</b><span>batalhas</span></div>
-            <div><b>${state.stats.caught}</b><span>capturas</span></div>
-          </div>
-          <p class="muted" style="margin:10px 0 0">Na barra: clique no HUD ou no seu bicho pra abrir este painel, e no selvagem pra lançar uma cápsula.
-            Pelo ícone da bandeja dá pra mover a faixa, mudar a largura e o monitor.</p>
-        </div>`;
+      const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`;
+      const sw = (id, on) => `<label class="switch"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}><span></span></label>`;
+      return {
+        head: tabs(SECTIONS.opts.tabs, 'settings') + sects('opts'),
+        body: `<div class="plate panel"><div class="scroll">
+            <div class="setrow"><span>Captura<small>Quando lançar cápsulas sozinho</small></span><select id="catchMode">${Object.entries(G.CATCH_MODES).map(([id, l]) => opt(id, l, state.settings.catchMode)).join('')}</select></div>
+            <div class="setrow"><span>Comprar cápsulas sozinho<small>Compra 5 quando acabam</small></span>${sw('autoBuy', state.settings.autoBuy)}</div>
+            <div class="setrow"><span>Aprender golpes sozinho<small>Troca o mais fraco por um melhor</small></span>${sw('autoMoves', state.settings.autoMoves !== false)}</div>
+            <div class="setrow"><span>Sprites e tiles<small>${A.list().length} arquivo(s) customizado(s)</small></span><span style="display:flex;gap:5px"><button class="tbtn slate sm" data-cmd="openSprites">Pasta</button><button class="tbtn slate sm" data-cmd="reloadSprites">Recarregar</button></span></div>
+            <div class="setrow"><span>Estatísticas<small>${state.stats.wins} vitórias · ${state.stats.battles} batalhas · ${state.stats.caught} capturas${state.stats.hatched ? ` · ${state.stats.hatched} ovos` : ''}</small></span></div>
+            <div class="setrow"><span>Recomeçar<small>Apaga todo o progresso</small></span><button class="tbtn red sm" data-cmd="reset">Recomeçar</button></div>
+          </div></div>`,
+        foot: `<span class="hint dts grow">Bandeja: mover a faixa, largura e monitor.</span>${closeBtn()}`,
+      };
     },
   };
 
-  // ---------- Popup (golpe / MT) ----------
-  const modal = $('modal');
-  let modalState = null; // { kind: 'move', id, uid } | { kind: 'tm', id, teaching }
-
-  function openModal(st) {
-    modalState = st;
-    renderModal();
-    if (!modal.open) modal.showModal();
+  function currentScreen() {
+    if (!state.starterChosen) return 'starters';
+    if (state.battle && state.battle.ask && askSeen) return 'encounter';
+    return nav.screen;
   }
 
-  function tmTeachList(t) {
-    const tm = G.TMS[t];
-    const all = [...state.team, ...state.box];
-    const fits = all.filter((c) => G.canLearnTm(c, t));
-    if (!fits.length) return '<p class="muted">Ninguém da sua equipe ou caixa pode aprender essa MT.</p>';
-    return fits.map((c) => {
-      const knows = c.moves.includes(tm.move);
-      const teaching = modalState.teaching === c.uid;
-      let action;
-      if (knows) action = '<span class="muted">já sabe</span>';
-      else if (!G.hasTm(state, t)) action = '<span class="muted">pode aprender</span>';
-      else if (c.moves.length < 4) action = `<button class="btn primary" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}">Ensinar</button>`;
-      else action = `<button class="btn ${teaching ? '' : 'primary'}" data-cmd="teachPick" data-uid="${c.uid}">${teaching ? 'Cancelar' : 'Ensinar…'}</button>`;
-      return `<div class="teach-row">
-        ${spr(c.species, { shiny: c.shiny, size: 32 })}
-        <span class="grow"><b>${esc(nameOf(c))}</b> ${genderIcon(c)} <span class="muted">nv ${c.level}${state.box.includes(c) ? ' · caixa' : ''}</span></span>
-        ${action}
+  function renderBottom() {
+    const name = currentScreen();
+    const s = (screens[name] || screens.team)();
+    const scroll = bottom.querySelector('.scroll');
+    const keep = scroll ? scroll.scrollTop : 0;
+    bottom.innerHTML = s.raw || `<div class="head">${s.head}</div><div class="body">${s.body}</div><div class="foot">${s.foot}</div>`;
+    const sc = bottom.querySelector('.scroll');
+    if (sc && name === bottom.dataset.screen) sc.scrollTop = keep;
+    bottom.dataset.screen = name;
+    renderEggs();
+    bindInputs();
+  }
+
+  function renderEggs() {
+    for (const e of state.eggs || []) {
+      const el = bottom.querySelector(`[data-egg="${e.id}"]`);
+      if (!el) continue;
+      const k = e.progress / e.need;
+      el.querySelector('.egg-bar').style.width = `${Math.round(k * 100)}%`;
+      el.querySelector('.egg-hint').textContent = k > 0.85 ? 'quase chocando!' : k > 0.5 ? 'se mexendo…' : 'vai demorar';
+      el.querySelector('.egg-left').textContent = `~${Math.max(0, Math.ceil((e.need - e.progress) / 60))} min`;
+    }
+  }
+
+  function bindInputs() {
+    const on = (id, fn) => { const el = $(id); if (el) el.addEventListener('change', fn); };
+    on('catchMode', (e) => send({ type: 'catchMode', value: e.target.value }));
+    on('autoBuy', (e) => send({ type: 'autoBuy', value: e.target.checked }));
+    on('autoMoves', (e) => send({ type: 'autoMoves', value: e.target.checked }));
+  }
+
+  // ---------- popup (golpe / MT / trocar golpes) ----------
+  function moveDetails(id, c = null) {
+    const m = G.MOVES[id];
+    const tm = Object.keys(G.TMS).find((t) => G.TMS[t].move === id);
+    const learners = G.SPECIES_ORDER.map((sp) => {
+      const ls = G.LEARNSETS[sp] || {};
+      const lv = Object.keys(ls).map(Number).sort((a, b) => a - b).find((l) => ls[l].includes(id));
+      return lv == null ? null : `<span class="chip">${state.dex.seen[sp] ? esc(G.SPECIES[sp].name) : '???'} nv${lv}</span>`;
+    }).filter(Boolean);
+    return `<div class="md-head" style="border-left:9px solid ${TYPE_DS[m.type]};padding-left:8px"><h3 class="dts">${esc(m.name)}</h3>${typeBadge(m.type, true)}<span class="tag">${G.CATEGORY[m.cat].label.toUpperCase()}</span></div>
+      <div class="md-stats">
+        <div class="stat"><span class="lbl">PODER</span><b>${m.cat === 'status' ? '—' : m.power}</b></div>
+        <div class="stat"><span class="lbl">PRECISÃO</span><b>${m.acc == null ? 'sempre' : `${m.acc}%`}</b></div>
+        <div class="stat"><span class="lbl">PP</span><b>${c && c.pp?.[id] != null ? `${c.pp[id]}/${m.pp}` : m.pp}</b></div>
+        <div class="stat"><span class="lbl">PRIORIDADE</span><b>${m.priority ? `+${m.priority}` : '0'}</b></div>
       </div>
-      ${teaching ? `<div class="teach-pick">
-        <span class="muted">Esquecer qual golpe?</span>
-        <div class="known">${c.moves.map((id) => `<button class="pick swap" style="--t:${G.TYPE_COLOR[G.MOVES[id].type]}" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}" data-replace="${id}"><b>${esc(G.MOVES[id].name)}</b><span>trocar</span></button>`).join('')}</div>
-        <button class="btn" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}">Só aprender (guardar pra depois)</button>
-      </div>` : ''}`;
-    }).join('');
+      <ul class="desc">${G.describeMove(id).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      ${learners.length ? `<div class="chips"><span class="lbl">APRENDEM:</span>${learners.join('')}</div>` : ''}
+      ${tm ? `<div class="chips"><span class="lbl">MÁQUINA:</span><button class="chip" data-cmd="tmInfo" data-tm="${tm}">${tm.toUpperCase()}${G.hasTm(state, tm) ? ' ✓' : ''}</button></div>` : ''}`;
   }
 
   function renderModal() {
     if (!modalState || !state) return;
     let body = '';
+    const close = `<button class="tbtn blue sm" data-cmd="closeModal">Fechar</button>`;
     if (modalState.kind === 'move') {
-      const c = [...state.team, ...state.box].find((x) => x.uid === modalState.uid) || null;
-      body = moveDetails(modalState.id, c);
+      body = `<div class="scroll">${moveDetails(modalState.id, byUid(modalState.uid))}</div><div style="display:flex;justify-content:flex-end">${close}</div>`;
+    } else if (modalState.kind === 'moves') {
+      const c = byUid(modalState.uid);
+      if (!c) { modal.close(); return; }
+      const draft = modalState.draft;
+      body = `<div class="md-head"><h3 class="dts">Golpes de ${esc(G.SPECIES[c.species].name)}</h3><span class="tag dark">${draft.length}/4</span></div>
+        <div class="scroll"><div class="moves">${c.known.map((id) => {
+          const m = G.MOVES[id], on = draft.includes(id);
+          return `<button class="move" style="--t:${TYPE_DS[m.type]};${on ? 'background:#fde8c8;border-color:#e8892a' : ''}" data-cmd="pick" data-move="${id}" ${!on && draft.length >= 4 ? 'disabled' : ''}>
+            <b>${on ? '✓ ' : ''}${esc(m.name)}</b><span>${G.CATEGORY[m.cat].icon} ${m.cat === 'status' ? '—' : m.power} · ${esc(G.TYPE_LABEL[m.type])}</span></button>`;
+        }).join('')}</div></div>
+        <div style="display:flex;justify-content:flex-end;gap:6px"><button class="tbtn green sm" data-cmd="saveMoves" ${draft.length ? '' : 'disabled'}>Salvar</button>${close}</div>`;
     } else {
       const t = modalState.id, tm = G.TMS[t];
       const have = G.hasTm(state, t);
-      let get;
-      if (have) get = '<span class="tag">VOCÊ TEM</span>';
-      else if (tm.price != null) get = `<button class="btn primary" data-cmd="buyTm" data-tm="${t}" ${state.coins < tm.price ? 'disabled' : ''}>Comprar por ${tm.price}${coin()}</button>`;
-      else get = `<span class="tag excl">EXCLUSIVA</span> <span class="muted">cai em batalhas: ${tm.drop.map((z) => esc(G.ZONES.find((x) => x.id === z).name)).join(', ')}</span>`;
-      body = `<div class="md-tm"><b>${t.toUpperCase()}</b> ${get}</div>
-        ${moveDetails(tm.move)}
-        <h4>Quem pode aprender</h4>
-        ${tmTeachList(t)}`;
+      const fits = all().filter((c) => G.canLearnTm(c, t));
+      body = `<div class="md-head"><span class="num-pill">${t.toUpperCase()}</span>
+          ${have ? '<span class="tag gold">VOCÊ TEM</span>' : tm.price != null ? `<button class="tbtn green sm" data-cmd="buyTm" data-tm="${t}" ${state.coins < tm.price ? 'disabled' : ''}>Comprar · ${fmt(tm.price)}</button>` : `<span class="tag">EXCLUSIVA · ${esc(tm.drop.map((z) => zoneOf(z).name).join(', '))}</span>`}</div>
+        <div class="scroll">${moveDetails(tm.move)}
+          <span class="lbl">QUEM PODE APRENDER</span>
+          ${fits.length ? fits.map((c) => {
+            const knows = c.moves.includes(tm.move), teaching = modalState.teaching === c.uid;
+            let action;
+            if (knows) action = '<span class="muted">já sabe</span>';
+            else if (!have) action = '<span class="muted">pode aprender</span>';
+            else if (c.moves.length < 4) action = `<button class="tbtn green sm" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}">Ensinar</button>`;
+            else action = `<button class="tbtn ${teaching ? 'slate' : 'green'} sm" data-cmd="teachPick" data-uid="${c.uid}">${teaching ? 'Cancelar' : 'Ensinar…'}</button>`;
+            return `<div class="trow">${spr(c.species, { shiny: c.shiny, size: 26 })}<span class="grow">${esc(G.SPECIES[c.species].name)} <span class="muted">nv${c.level}</span></span>${action}</div>
+              ${teaching ? `<span class="muted" style="font-size:12px;font-weight:600">Esquecer qual golpe?</span><div class="swaps">${c.moves.map((id) => `<button class="tbtn slate sm" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}" data-replace="${id}">${esc(G.MOVES[id].name)}</button>`).join('')}</div>
+                <button class="tbtn slate sm" data-cmd="teach" data-tm="${t}" data-uid="${c.uid}">Só aprender (guardar)</button>` : ''}`;
+          }).join('') : '<p class="muted" style="margin:0;font-size:13px;font-weight:600">Ninguém da equipe ou caixa pode aprender.</p>'}
+        </div><div style="display:flex;justify-content:flex-end">${close}</div>`;
     }
-    modal.innerHTML = `<div class="md">
-      <button class="md-close" data-cmd="closeModal" aria-label="Fechar">✕</button>
-      ${body}
-    </div>`;
+    modal.innerHTML = `<div class="md">${body}</div>`;
   }
-
-  modal.addEventListener('close', () => { modalState = null; });
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); }); // clique fora fecha
-
-  const EGG_LABEL = { campo: 'Campo', agua: 'Água', planta: 'Planta', inseto: 'Inseto', mineral: 'Mineral', voador: 'Voador', indefinido: 'Sem ovos' };
-  const SPECIES_EGG = (c) => G.SPECIES[c.species].egg.map((g) => EGG_LABEL[g]).join('/');
-
-  /** Barras dos ovos: atualizam a cada sync sem redesenhar a aba. */
-  function renderEggs() {
-    for (const e of state.eggs || []) {
-      const el = document.querySelector(`[data-egg="${e.id}"]`);
-      if (!el) continue;
-      const k = e.progress / e.need;
-      el.querySelector('.egg-bar').style.width = `${Math.round(k * 100)}%`;
-      el.querySelector('.egg-hint').textContent = k > 0.85 ? 'Está quase chocando!' : k > 0.5 ? 'Às vezes se mexe…' : 'Ainda vai demorar.';
-      const left = Math.max(0, Math.ceil((e.need - e.progress) / 60));
-      el.querySelector('.egg-left').textContent = `faltam ~${left} min`;
-    }
-  }
-
-  function renderStarters() {
-    app.innerHTML = `
-      <div class="card">
-        <h2>Escolha seu parceiro</h2>
-        <p class="muted" style="margin:0 0 12px">Ele vai andar pela sua barra de tarefas, batalhar sozinho e ficar mais forte enquanto você trabalha.</p>
-        <div class="starters">
-          ${G.STARTERS.map((id) => {
-            const sp = G.SPECIES[id];
-            return `<div class="starter">
-              ${spr(id, { size: 72 })}
-              <b>${esc(sp.name)}</b>${typeBadge(sp.type)}
-              <button class="btn primary" data-cmd="starter" data-species="${id}">Escolher</button>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-  }
-
-  function renderHeader() {
-    $('coins').innerHTML = `${uiIcon('coin', spr('_coin', { size: 12 }))} ${state.coins}`;
-    $('caps').innerHTML = `${uiIcon('capsule', spr('capsula', { item: true, size: 12 }))} ${state.items.capsula || 0}+${state.items.super || 0}`;
-  }
-
-  function render() {
-    renderHeader();
-    renderTabs();
-    renderHero();
-    if (!state.starterChosen) return renderStarters();
-    if (!views[tab]) tab = 'team';
-    app.innerHTML = views[tab]();
+  function openModal(st) {
+    modalState = st;
     renderModal();
-    renderEggs();
-    $('gear').classList.toggle('on', tab === 'settings');
-    if ($('catchMode')) $('catchMode').addEventListener('change', (e) => send({ type: 'catchMode', value: e.target.value }));
-    if ($('autoBuy')) $('autoBuy').addEventListener('change', (e) => send({ type: 'autoBuy', value: e.target.checked }));
-    const am = $('autoMoves');
-    if (am) am.addEventListener('change', (e) => send({ type: 'autoMoves', value: e.target.checked }));
+    if (!modal.open) modal.showModal();
+  }
+  modal.addEventListener('close', () => { modalState = null; });
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
+
+  // grito do bicho no "Ouvir": um piado sintetizado diferente por espécie
+  function cry(species) {
+    try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const i = G.SPECIES_ORDER.indexOf(species) + 1;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = ['square', 'sawtooth', 'triangle'][i % 3];
+      const f0 = 220 + ((i * 97) % 500);
+      o.frequency.setValueAtTime(f0, ac.currentTime);
+      o.frequency.linearRampToValueAtTime(f0 * 1.6, ac.currentTime + 0.12);
+      o.frequency.linearRampToValueAtTime(f0 * 0.8, ac.currentTime + 0.35);
+      g.gain.setValueAtTime(0.08, ac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.45);
+      o.connect(g).connect(ac.destination);
+      o.start();
+      o.stop(ac.currentTime + 0.5);
+    } catch { /* sem áudio */ }
   }
 
-  // Redesenha tudo só quando algo "estrutural" muda; o herói atualiza sempre.
+  // ---------- estado / render ----------
+  function go(screen, extra = {}) {
+    nav = { ...nav, ...extra, screen };
+    for (const [sect, s] of Object.entries(SECTIONS)) {
+      if ((s.tabs || []).some(([id]) => id === screen) || (sect === 'dex' && (screen === 'dex' || screen === 'entry'))) nav.sect = sect;
+    }
+    if (screen === 'summary') nav.sect = 'team';
+    saveNav();
+    rerender();
+  }
+  function goSection(sect) {
+    const first = { team: 'team', bag: 'shop', dex: 'dex', opts: 'zones' }[sect] || 'team';
+    askSeen = false; // sair da tela de ações
+    go(first);
+  }
+  const rerender = () => { lastKey = ''; if (state) onState(state); };
+
   function onState(s) {
     state = s;
-    if (s.settings && s.settings.palette && s.settings.palette !== A.paletteId) A.setPalette(s.settings.palette); // chama rerender via onChange
+    // a pergunta de captura apareceu: tela de baixo vira "Escolha uma ação" (uma vez por pergunta)
+    const ask = s.battle && s.battle.ask ? `${s.battle.species}:${s.battle.ask}:${s.battle.tries}` : '';
+    if (ask && ask !== onState.lastAsk) askSeen = true;
+    if (!ask) askSeen = false;
+    onState.lastAsk = ask;
+    renderTop();
     const key = JSON.stringify({
-      ...s, battle: null, resting: null, lastSaved: null, v: A.version, tab, editing, draft, genesOf, modal: modalState,
-      eggs: (s.eggs || []).map((e) => e.id), daycare: s.daycare && [s.daycare.mons.map((c) => [c.uid, c.held]), !!s.daycare.egg],
-      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort, c.held, c.nature]),
+      ...s, battle: s.battle ? { ask: s.battle.ask, caps: s.battle.caps, species: s.battle.species } : null, resting: null, lastSaved: null,
+      v: A.version, nav, boxFilter, boxSort, sel: [...selected], modal: modalState, askSeen,
+      team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort, c.held, c.locked, Object.values(c.pp || {})]),
+      eggs: (s.eggs || []).map((e) => e.id), box: s.box.map((c) => [c.uid, c.level, c.locked]),
     });
     if (key !== lastKey) {
       lastKey = key;
-      const scroll = window.scrollY;
-      render();
-      window.scrollTo(0, scroll);
+      renderBottom();
+      renderModal();
     } else {
-      renderHero();
       renderEggs();
     }
   }
 
-  const rerender = () => { lastKey = ''; heroKey = ''; if (state) onState(state); };
-
-  document.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => bridge.windowControl(b.dataset.win)));
-
-  $('gear').addEventListener('click', () => {
-    tab = tab === 'settings' ? 'team' : 'settings';
-    try { localStorage.setItem('taskmon-tab', tab); } catch { /* sem storage */ }
-    rerender();
-    window.scrollTo(0, 0);
-  });
-
-  tabsEl.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-tab]');
-    if (!b || b.dataset.tab === tab) return;
-    tab = b.dataset.tab;
-    try { localStorage.setItem('taskmon-tab', tab); } catch { /* sem storage */ }
-    rerender();
-    window.scrollTo(0, 0);
-  });
-
-  app.addEventListener('change', (e) => {
-    const ds = e.target.dataset || {};
-    if (ds.f !== undefined) { boxFilter[ds.f] = e.target.value; rerender(); return; }
-    if (ds.sort !== undefined) { boxSort = e.target.value; rerender(); return; }
-    if (e.target.dataset && e.target.dataset.hold) {
-      send({ type: 'hold', uid: e.target.dataset.hold, item: e.target.value || null });
-      return;
-    }
-    const id = e.target.dataset && e.target.dataset.pick;
-    if (!id) return;
-    if (e.target.checked && !draft.includes(id) && draft.length < 4) draft.push(id);
-    if (!e.target.checked) draft = draft.filter((x) => x !== id);
-    rerender();
-  });
-
-  function onCommandClick(e) {
-    const b = e.target.closest('button[data-cmd]');
-    if (!b) return;
-    e.preventDefault(); // não marca o checkbox quando o botão "?" está dentro do label
+  // ---------- eventos ----------
+  function onClick(e) {
+    const b = e.target.closest('[data-cmd]');
+    if (!b || b.disabled) return;
     const d = b.dataset;
     switch (d.cmd) {
+      case 'sect': goSection(d.sect); break;
+      case 'tab':
+        if (d.screen) go(d.screen);
+        else if (d.sumtab) { nav.sumTab = d.sumtab; saveNav(); rerender(); }
+        else if (d.dextab) { nav.dexTab = d.dextab; saveNav(); rerender(); }
+        break;
+      case 'close': bridge.windowControl('close'); break;
+      case 'back': go(nav.screen === 'entry' ? 'dex' : nav.from === 'box' ? 'box' : 'team'); break;
+      case 'summary': go('summary', { uid: d.uid, from: d.from || 'team', sumTab: nav.sumTab || 'info' }); break;
+      case 'sumPrev': case 'sumNext': {
+        const c = byUid(nav.uid);
+        const list = c && state.box.includes(c) ? state.box : state.team;
+        const i = list.indexOf(c);
+        const n = list[(i + (d.cmd === 'sumNext' ? 1 : -1) + list.length) % list.length];
+        if (n) go('summary', { uid: n.uid });
+        break;
+      }
+      case 'starter': send({ type: 'chooseStarter', species: d.species }); break;
+      case 'setLead': send({ type: 'setLead', uid: d.uid }); break;
+      case 'toBox': send({ type: 'move', uid: d.uid, to: 'box' }); nav.from = 'box'; break;
+      case 'toTeam': send({ type: 'move', uid: d.uid, to: 'team' }); nav.from = 'team'; break;
+      case 'zone': send({ type: 'zone', id: d.id }); break;
+      case 'buy': send({ type: 'buy', item: d.item, qty: Number(d.qty) }); break;
+      case 'grit': send({ type: 'grit', uid: d.uid, stat: d.stat }); break;
       case 'moveInfo': openModal({ kind: 'move', id: d.move, uid: d.uid || null }); break;
       case 'tmInfo': openModal({ kind: 'tm', id: d.tm, teaching: null }); break;
-      case 'closeModal': modal.close(); break;
-      case 'palette': send({ type: 'palette', value: d.id }); A.setPalette(d.id); break;
-      case 'catchYes': send({ type: 'catchAnswer', yes: true }); break;
-      case 'catchNo': send({ type: 'catchAnswer', yes: false }); break;
-      case 'lock': send({ type: 'lock', uid: d.uid }); break;
-      case 'clearFilter': boxFilter = { species: '', nature: '', natureNot: '', minIv: '', maxIv: '', shiny: '', gender: '' }; rerender(); break;
-      case 'selectFiltered':
-        state.box.filter((c) => G.matchesFilter(c, boxFilter) && !c.locked).forEach((c) => selected.add(c.uid));
-        rerender();
+      case 'editMoves': { const c = byUid(d.uid); if (c) openModal({ kind: 'moves', uid: c.uid, draft: [...c.moves] }); break; }
+      case 'pick': {
+        const dr = modalState.draft, id = d.move;
+        if (dr.includes(id)) modalState.draft = dr.filter((x) => x !== id);
+        else if (dr.length < 4) dr.push(id);
+        renderModal();
         break;
-      case 'clearSel': selected.clear(); rerender(); break;
-      case 'releaseSel':
-      case 'releaseFiltered': {
-        const uids = d.cmd === 'releaseSel'
-          ? [...selected].filter((u) => !state.box.find((c) => c.uid === u)?.locked)
+      }
+      case 'saveMoves': send({ type: 'setMoves', uid: modalState.uid, moves: modalState.draft }); modal.close(); break;
+      case 'closeModal': modal.close(); break;
+      case 'buyTm': send({ type: 'buyTm', tm: d.tm }); break;
+      case 'teachPick': modalState.teaching = modalState.teaching === d.uid ? null : d.uid; renderModal(); break;
+      case 'teach': send({ type: 'teachTm', tm: d.tm, uid: d.uid, replace: d.replace || null }); modalState.teaching = null; break;
+      case 'catchYes': send({ type: 'throw' }); break;
+      case 'catchNo': send({ type: 'catchAnswer', yes: false }); askSeen = false; break;
+      case 'lock': send({ type: 'lock', uid: d.uid }); break;
+      case 'sel': if (selected.has(d.uid)) selected.delete(d.uid); else selected.add(d.uid); rerender(); break;
+      case 'selFiltered': state.box.filter((c) => G.matchesFilter(c, boxFilter) && !c.locked).forEach((c) => selected.add(c.uid)); rerender(); break;
+      case 'release': {
+        const uids = selected.size ? [...selected].filter((u) => !byUid(u)?.locked)
           : state.box.filter((c) => G.matchesFilter(c, boxFilter) && !c.locked).map((c) => c.uid);
         const shinies = state.box.filter((c) => uids.includes(c.uid) && c.shiny).length;
-        if (!uids.length) break;
-        if (confirm(`Soltar ${uids.length} criatura(s)${shinies ? `, incluindo ${shinies} brilhante(s)` : ''}? Não dá pra desfazer.`)) {
+        if (uids.length && confirm(`Soltar ${uids.length} criatura(s)${shinies ? `, incluindo ${shinies} brilhante(s)` : ''}? Não dá pra desfazer.`)) {
           send({ type: 'release', uids });
           uids.forEach((u) => selected.delete(u));
         }
@@ -813,49 +768,42 @@
       }
       case 'daycarePut': send({ type: 'daycarePut', uid: d.uid }); break;
       case 'daycareTake': send({ type: 'daycareTake', uid: d.uid }); break;
-      case 'buyTm': send({ type: 'buyTm', tm: d.tm }); break;
-      case 'teachPick': modalState.teaching = modalState.teaching === d.uid ? null : d.uid; renderModal(); break;
-      case 'teach':
-        send({ type: 'teachTm', tm: d.tm, uid: d.uid, replace: d.replace || null });
-        modalState.teaching = null;
-        break;
-      case 'starter': send({ type: 'chooseStarter', species: d.species }); break;
-      case 'setLead': send({ type: 'setLead', uid: d.uid }); break;
-      case 'toBox': send({ type: 'move', uid: d.uid, to: 'box' }); break;
-      case 'toTeam': send({ type: 'move', uid: d.uid, to: 'team' }); break;
-      case 'zone': send({ type: 'zone', id: d.id }); break;
-      case 'buy': send({ type: 'buy', item: d.item, qty: Number(d.qty) }); break;
-      case 'editMoves': {
-        const c = state.team.find((x) => x.uid === d.uid);
-        if (editing === d.uid) { editing = null; } else if (c) { editing = d.uid; draft = [...c.moves]; }
-        rerender();
+      case 'dexSel': nav.dexSel = Number(d.i); saveNav(); rerender(); break;
+      case 'dexEntry': go('entry', { dexTab: 'reg' }); break;
+      case 'dexPrev': case 'dexNext': {
+        const ids = G.SPECIES_ORDER;
+        let i = nav.dexSel;
+        for (let n = 0; n < ids.length; n++) { // pula os ainda não vistos
+          i = (i + (d.cmd === 'dexNext' ? 1 : -1) + ids.length) % ids.length;
+          if (state.dex.seen[ids[i]]) break;
+        }
+        nav.dexSel = i; saveNav(); rerender();
         break;
       }
-      case 'genes': genesOf = genesOf === d.uid ? null : d.uid; rerender(); break;
-      case 'grit': send({ type: 'grit', uid: d.uid, stat: d.stat }); break;
-      case 'saveMoves': send({ type: 'setMoves', uid: d.uid, moves: draft }); editing = null; rerender(); break;
-      case 'cancelMoves': editing = null; rerender(); break;
+      case 'dexFilter': nav.dexFilter = { all: 'caught', caught: 'seen', seen: 'all' }[nav.dexFilter]; saveNav(); rerender(); break;
+      case 'cry': cry(d.species); break;
       case 'openSprites': bridge.openSpritesFolder(); break;
       case 'reloadSprites': bridge.reloadAssets(); break;
-      case 'reset':
-        if (confirm('Apagar todo o progresso e começar de novo?')) send({ type: 'reset' });
-        break;
+      case 'reset': if (confirm('Apagar todo o progresso e começar de novo?')) send({ type: 'reset' }); break;
+      default: break;
     }
   }
-  app.addEventListener('click', onCommandClick);
-  hero.addEventListener('click', onCommandClick);
-  // clicar no cartão da caixa (fora dos botões) marca/desmarca
-  app.addEventListener('click', (e) => {
-    if (e.target.closest('button, select, input')) return;
-    const item = e.target.closest('[data-sel]');
-    if (!item) return;
-    const u = item.dataset.sel;
-    if (selected.has(u)) selected.delete(u); else selected.add(u);
-    rerender();
+  bottom.addEventListener('click', (e) => {
+    // clique no cartão da caixa abre o resumo, mas não quando é no quadradinho/cadeado
+    if (e.target.closest('.ck, .lk')) { e.stopPropagation(); onClick({ target: e.target.closest('.ck, .lk') }); return; }
+    onClick(e);
   });
-  modal.addEventListener('click', onCommandClick);
+  modal.addEventListener('click', onClick);
+  bottom.addEventListener('change', (e) => {
+    const ds = e.target.dataset || {};
+    if (ds.f !== undefined) { boxFilter[ds.f] = e.target.value; rerender(); return; }
+    if (ds.sort !== undefined) { boxSort = e.target.value; rerender(); return; }
+    if (ds.hold) send({ type: 'hold', uid: ds.hold, item: e.target.value || null });
+  });
+  document.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => bridge.windowControl(b.dataset.win)));
+  if (bridge.onGoto) bridge.onGoto((sect) => goSection(sect));
 
-  A.onChange(() => { applyTheme(); rerender(); });
+  A.onChange(() => { topKey = ''; rerender(); });
   await A.load();
   bridge.onState(onState);
   bridge.requestState();

@@ -474,6 +474,7 @@
     switch (sim.phase) {
       case 'walk':
         sim.walkT += dt;
+        lead.steps = (lead.steps || 0) + dt * 2; // ~2 passos por segundo andando
         sim.scroll += dt * 26;
         lead.hp = Math.min(max, lead.hp + max * 0.15 * dt); // cura entre batalhas
         if ((sim.ppT += dt) > 2.5) { // PP volta aos poucos andando
@@ -894,6 +895,12 @@
         break;
       case 'catchAnswer':
         answerCatch(cmd.yes);
+        break;
+      case 'throw': // botão CAPTURAR do painel: no meio da luta arrisca; derrotado, lança
+        if (!sim.wild) break;
+        if (sim.phase === 'prompt') answerCatch(true);
+        else if (sim.phase === 'down') { if (pickCapsule(sim.wild)) autoThrow(); }
+        else if (sim.phase === 'fight') { const it = pickCapsule(sim.wild); if (it) throwCapsule(it); else toast('Sem cápsulas!'); }
         break;
       case 'release': {
         const r = G.releaseCreatures(state, cmd.uids || []);

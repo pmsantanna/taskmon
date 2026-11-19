@@ -140,6 +140,14 @@
     if (!NATURES[c.nature]) c.nature = NATURE_IDS[randInt(rng, 0, NATURE_IDS.length - 1)];
     if (c.held === undefined) c.held = null;
     if (c.gender === undefined) c.gender = rollGender(c.species, rng);
+    if (!c.met) c.met = { how: 'antigo', zone: null, level: c.level, at: Date.now() }; // saves antigos
+    if (c.steps === undefined) c.steps = 0;
+    return c;
+  }
+
+  /** Registra como/onde a criatura chegou (aparece no resumo do painel). */
+  function stampMet(c, how, zone) {
+    c.met = { how, zone, level: c.level, at: Date.now() };
     return c;
   }
 
@@ -642,6 +650,7 @@
   function chooseStarter(state, species, rng = Math.random) {
     if (state.starterChosen || !STARTERS.includes(species)) return null;
     const c = createCreature(species, 5, rng);
+    stampMet(c, 'inicial', state.zone);
     state.team.push(c);
     state.lead = c.uid;
     state.starterChosen = true;
@@ -666,6 +675,8 @@
     const zone = ZONES.find((z) => z.id === state.zone) || ZONES[0];
     const species = weighted(rng, zone.pool);
     const wild = createCreature(species, randInt(rng, zone.levels[0], zone.levels[1]), rng);
+    state.dex.seenAt = state.dex.seenAt || {};
+    if (!state.dex.seenAt[species]) state.dex.seenAt[species] = zone.id; // onde viu pela 1ª vez
     if (rng() < 0.08) wild.held = WILD_HELD[randInt(rng, 0, WILD_HELD.length - 1)]; // vem junto na captura
     state.dex.seen[species] = true;
     return wild;
@@ -673,6 +684,7 @@
 
   /** Coloca na equipe (se couber) ou na caixa. */
   function addCaught(state, c) {
+    if (!c.met || c.met.how === 'antigo') stampMet(c, 'capturado', state.zone);
     c.hp = maxHp(c);
     afterBattle(c);
     restorePp(c);
@@ -817,6 +829,7 @@
   function hatchEgg(state, egg, rng = Math.random) {
     const c = { uid: uid(rng), species: egg.species, level: 1, xp: 0, shiny: egg.shiny, ivs: egg.ivs, nature: egg.nature };
     ensureGenes(c, rng);
+    stampMet(c, 'ovo', 'creche');
     c.hp = maxHp(c);
     ensureMoves(c);
     if (state.team.length < TEAM_MAX) state.team.push(c);
@@ -1033,7 +1046,7 @@
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
-    CATCH_MODES, ensureSettings, wantsCatch, autoBuyCapsules, ivPercent, perfectIvs, matchesFilter, releaseCreatures, toggleLock,
+    stampMet, CATCH_MODES, ensureSettings, wantsCatch, autoBuyCapsules, ivPercent, perfectIvs, matchesFilter, releaseCreatures, toggleLock,
     DAYCARE_MAX, EGGS_MAX, EGG_CHECK_S, rollGender, baseSpecies, breedChance, breedMood, hatchTime, makeEgg,
     hatchEgg, ensureBreeding, tickBreeding, daycarePut, daycareTake,
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
