@@ -16,7 +16,7 @@ const APP_SPRITES = path.join(__dirname, 'assets', 'sprites');
 const USER_SPRITES = () => userFile('sprites');
 
 const DEFAULT_CONFIG = {
-  width: 460,      // largura da faixa
+  width: 600,      // largura da faixa (o design tem 600 px)
   offsetX: 230,    // distância da borda esquerda da tela (no Win11 o lado esquerdo costuma estar livre)
   mode: 'taskbar', // 'taskbar' = em cima da barra | 'above' = logo acima dela
   displayId: null, // null = monitor principal
@@ -205,34 +205,46 @@ function trackCursor() {
   }
 }
 
-function panelBounds() {
-  const w = 480, h = 720;
-  const d = targetDisplay();
-  const wa = d.workArea;
-  const sb = alive(strip) ? strip.getBounds() : stripBounds();
-  // Abre logo acima da faixa, alinhado com ela, sem sair da área útil.
-  const x = Math.max(wa.x + 8, Math.min(sb.x, wa.x + wa.width - w - 8));
-  const height = Math.min(h, wa.height - 16);
-  const y = Math.max(wa.y + 8, wa.y + wa.height - height - 8);
-  return { x, y, width: w, height };
+// O painel é um "DS": topo do aparelho + tela de cima (384) + dobradiça (24) + tela de baixo (384),
+// com 512 px de largura (256×192 por tela, em 2×). Se não couber na área útil, encolhe com zoom.
+const PANEL_W = 512, PANEL_H = 26 + 384 + 24 + 384;
+function panelZoom() {
+  const wa = targetDisplay().workArea;
+  return Math.min(1, (wa.height - 16) / PANEL_H, (wa.width - 16) / PANEL_W);
 }
 
-function showPanel() {
+function panelBounds() {
+  const z = panelZoom();
+  const w = Math.round(PANEL_W * z), h = Math.round(PANEL_H * z);
+  const wa = targetDisplay().workArea;
+  const sb = alive(strip) ? strip.getBounds() : stripBounds();
+  // abre logo acima da faixa, alinhado com ela, sem sair da área útil
+  const x = Math.max(wa.x + 8, Math.min(sb.x, wa.x + wa.width - w - 8));
+  const y = Math.max(wa.y + 8, wa.y + wa.height - h - 8);
+  return { x, y, width: w, height: h };
+}
+
+let pendingSection = null;
+function showPanel(section) {
+  if (typeof section !== 'string') section = null;
   if (alive(panel)) {
     if (panel.isMinimized()) panel.restore();
     panel.show();
     panel.focus();
+    if (section) panel.webContents.send('panel:goto', section);
     return;
   }
+  pendingSection = section;
   panel = new BrowserWindow({
     ...panelBounds(),
-    minWidth: 400,
-    minHeight: 480,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     title: 'Taskmon',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     autoHideMenuBar: true,
-    frame: false, // a moldura é desenhada pelo painel (estilo Game Boy)
-    backgroundColor: '#0f380f',
+    frame: false, // a moldura do "aparelho" é desenhada pelo painel
+    backgroundColor: '#34343e',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -241,6 +253,11 @@ function showPanel() {
   });
   panel.setMenu(null);
   panel.loadFile(path.join(__dirname, 'renderer', 'panel.html'));
+  panel.webContents.on('did-finish-load', () => {
+    panel.webContents.setZoomFactor(panelZoom());
+    if (pendingSection) panel.webContents.send('panel:goto', pendingSection);
+    pendingSection = null;
+  });
   panel.once('ready-to-show', () => { panel.show(); panel.focus(); });
   panel.on('closed', () => { panel = null; });
 }
@@ -380,7 +397,7 @@ ipcMain.on('strip:clickthrough', (_e, ignore) => {
   strip.setIgnoreMouseEvents(ignore, { forward: true });
   stripGrabbing = !ignore;
 });
-ipcMain.on('panel:open', showPanel);
+ipcMain.on('panel:open', (_e, section) => showPanel(section));
 ipcMain.on('panel:win', (_e, action) => {
   if (!alive(panel)) return;
   if (action === 'min') panel.minimize();
@@ -404,6 +421,7 @@ ipcMain.on('assets:reload', broadcastAssetsChanged);
 // ---------- Ciclo de vida ----------
 app.whenReady().then(() => {
   config = { ...DEFAULT_CONFIG, ...readJson(CONFIG_FILE(), {}) };
+  if (config.width === 460 && !config.widthMigrated) { config.width = 600; config.widthMigrated = true; } // antigo padrão
   createStrip();
   createTray();
   watchUserSprites();

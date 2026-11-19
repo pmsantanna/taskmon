@@ -1,0 +1,106 @@
+/* Faixa estilo DS (design do Claude Design). As medidas estão no "2×" do design (104 px de
+   altura); o #ui recebe zoom = altura da faixa / 104, então 1 px aqui = meio px de tela a 52 px. */
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; }
+canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+
+#ui {
+  position: absolute; left: 0; top: 0; height: 104px;
+  font-family: 'Pixelify Sans', monospace; color: #484850;
+}
+#ui .row { position: relative; height: 100%; box-sizing: border-box; padding: 8px; display: flex; gap: 12px; align-items: stretch; }
+.px { image-rendering: pixelated; display: block; }
+.dts { text-shadow: 2px 2px 0 #c8c8c0; }
+
+/* barras */
+.hp { display: flex; align-items: center; gap: 5px; background: #404858; padding: 2px 4px 2px 6px; border-radius: 3px; }
+.hp-l { font-size: 11px; font-weight: 700; color: #f8b830; line-height: 1; letter-spacing: 1px; }
+.hp-t { flex: 1; height: 8px; background: #283038; border-radius: 1px; }
+.hp-t > i, .xp > i, .tm > i { display: block; height: 100%; }
+.xp { height: 5px; background: #283038; border-radius: 3px; overflow: hidden; }
+.xp > i { background: #40a0f0; transition: width .3s steps(8, end); }
+
+/* placa do líder (esquerda) */
+#lead { width: 320px; flex-shrink: 0; position: relative; }
+#lead svg { position: absolute; left: 0; top: 0; }
+#portrait { position: absolute; left: 18px; top: 18px; width: 48px; height: 40px; }
+#lead .info { position: absolute; left: 84px; right: 34px; top: 10px; bottom: 15px; display: flex; flex-direction: column; justify-content: space-between; }
+.line { display: flex; align-items: baseline; gap: 6px; }
+.name { font-size: 22px; font-weight: 600; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g { font-size: 17px; font-weight: 700; line-height: 1; }
+.g.m { color: #2860d0; } .g.f { color: #d03860; }
+.lv { margin-left: auto; font-size: 20px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.lv small { font-size: 13px; }
+.st { font-size: 11px; font-weight: 700; color: #fff; padding: 2px 5px; border-radius: 4px; line-height: 1; align-self: center; letter-spacing: 1px; }
+.hpnum { font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.xpgain { font-size: 12px; font-weight: 700; color: #1d7a44; line-height: 1; }
+
+/* cena (meio): rótulo da zona e plaquinha do selvagem; os bichos são desenhados no canvas */
+#scene { flex: 1; position: relative; min-width: 0; }
+#zone { position: absolute; left: 6px; top: 2px; font-size: 14px; font-weight: 600; color: #2c4a5a; letter-spacing: 1px; white-space: nowrap; }
+#foe { position: absolute; top: 0; right: 86px; width: 168px; height: 44px; }
+#foe svg { position: absolute; left: 0; top: 0; }
+#foe .info { position: absolute; left: 0; top: 0; width: 168px; height: 40px; box-sizing: border-box; padding: 6px 26px 8px 10px; display: flex; flex-direction: column; justify-content: space-between; }
+#foe .name { font-size: 15px; }
+#foe .g { font-size: 13px; }
+#foe .lv { font-size: 14px; }
+#foe .lv small { font-size: 11px; }
+#foe .bar { height: 6px; background: #283038; border: 2px solid #404858; }
+#foe .bar > i { display: block; height: 100%; }
+
+/* caixa de diálogo */
+#dlg {
+  flex: 0 1 380px; min-width: 220px; box-sizing: border-box; position: relative;
+  border: 4px solid #566072; border-radius: 10px; background: #f8f8f8; box-shadow: inset 0 0 0 3px var(--ring, #b8cad8);
+  padding: 8px 16px; display: flex; flex-direction: column; justify-content: center; gap: 8px;
+}
+#dlg.success { --ring: #b8e0c0; }
+#dlg.alert { --ring: #f0bcc4; }
+#dlg p { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#dlg p strong { font-weight: 700; }
+#dlg p.sub { font-size: 16px; color: #505058; }
+#dlg .ask { display: flex; align-items: center; gap: 10px; }
+#dlg .ask span { font-size: 18px; font-weight: 500; line-height: 1; white-space: nowrap; }
+#dlg .timer { flex: 1; display: flex; align-items: center; background: #404858; padding: 2px 3px; border-radius: 3px; }
+#dlg .tm { flex: 1; height: 8px; background: #283038; }
+#dlg .tm > i { background: linear-gradient(#fce07a 0 45%, #f0a818 45% 100%); }
+#dlg .secs { font-size: 15px; font-weight: 700; color: #a8202c; }
+#dlg .more { position: absolute; right: 12px; bottom: 6px; font-size: 14px; color: #c82838; animation: blink 1s steps(1, end) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* botões de toque */
+#act { width: 130px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+.tbtn {
+  flex: 1; font: inherit; font-size: 16px; color: #fff; font-weight: 700; letter-spacing: 2px; text-shadow: 2px 2px 0 #383840;
+  border: 3px solid #383840; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: inset 0 -5px 0 rgba(0,0,0,.2), inset 0 4px 0 rgba(255,255,255,.35); white-space: nowrap;
+}
+.tbtn.red { background: #e05848; } .tbtn.blue { background: #4888d0; }
+.hot { filter: brightness(1.08); }
+.tbtn.down, .rbtn.down { box-shadow: inset 0 4px 0 rgba(0,0,0,.2); }
+
+/* bolsa (direita) */
+#purse { width: 220px; flex-shrink: 0; position: relative; }
+#purse svg { position: absolute; left: 0; top: 0; }
+#purse .info { position: absolute; left: 34px; right: 14px; top: 8px; bottom: 13px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+#purse .it { display: flex; align-items: center; gap: 8px; }
+#purse .lbl { font-size: 12px; font-weight: 700; color: #585860; letter-spacing: 1px; }
+#purse .val { margin-left: auto; font-size: 20px; font-weight: 600; line-height: 1; }
+#purse .ico { width: 16px; height: 20px; display: flex; align-items: center; justify-content: center; }
+
+/* menu (4 botões) */
+#menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 96px; flex-shrink: 0; }
+.rbtn {
+  width: 44px; height: 40px; display: flex; align-items: center; justify-content: center; border: 2px solid #383840;
+  border-radius: 10px; color: #fff; box-shadow: inset 0 -4px 0 rgba(0,0,0,.2), inset 0 3px 0 rgba(255,255,255,.35);
+}
+.rbtn svg { filter: drop-shadow(1px 1px 0 #383840); }
+
+/* o que aparece em cada estado */
+#ui .hide, #ui.explore #dlg, #ui.explore #act, #ui.toast #act, #ui.toast #menu,
+#ui.prompt #purse, #ui.prompt #menu, #ui.narrow.toast #purse, #ui.nomenu #menu { display: none; }
+#ui.prompt #dlg { flex-basis: 340px; }
+
+/* antes de escolher o inicial: só um diálogo de ponta a ponta */
+#ui.starter #lead, #ui.starter #scene, #ui.starter #act, #ui.starter #purse, #ui.starter #menu { display: none; }
+#ui.starter #dlg { flex: 1; display: flex; }

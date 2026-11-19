@@ -14,8 +14,10 @@
   const ctx = canvas.getContext('2d');
 
   // ---------- Layout ----------
-  const HUD_W = 122;
+  // A faixa segue o design do Claude Design (strip-ui.js desenha as placas em HTML por cima);
+  // aqui ficam só as medidas da cena onde os bichos andam, em px da janela.
   let W = 0, H = 0, S = 24, groundY = 0, leadX = 0, wildTargetX = 0;
+  let sceneL = 0, sceneR = 0, k = 0.5; // k = px de tela por px do design 2× (altura/104)
   let dpr = 1;
 
   // Tamanho do canvas em pixels físicos. Chamado no resize, quando o DPI muda (o evento
@@ -43,26 +45,33 @@
   watchDpr();
   resize();
 
-  // Posições que dependem do tamanho e do tile de chão da zona atual (recalculado todo quadro).
+  // Posições da cena (recalculadas todo quadro; o retângulo vem da camada HTML).
   let ground = null, groundScale = 1, bg = null, bgScale = 1;
   function layout() {
-    const zoneId = state.zone;
-    ground = A.tile(zoneId, 'ground');
-    bg = A.tile(zoneId, 'bg');
-    S = Math.max(24, Math.round((H * 0.6) / 12) * 12); // múltiplo de 12 = pixels nítidos
-    if (ground) {
-      const gi = ground.img, c = ground.cfg;
-      groundScale = c.scale || Math.max(1, Math.round((H * 0.28) / gi.height));
-      // "feet": a quantos px (do PNG) da base do tile os pés ficam. Padrão: 35% da altura.
-      const feet = c.feet ?? Math.round(gi.height * 0.35);
-      groundY = Math.round(H - feet * groundScale);
-    } else {
-      groundY = H - 3;
-    }
+    k = H / 104;
+    ground = A.tile(state.zone, 'ground');
+    bg = A.tile(state.zone, 'bg');
+    if (ground) groundScale = ground.cfg.scale || Math.max(1, Math.round((H * 0.28) / ground.img.height));
     if (bg) bgScale = bg.cfg.scale || H / bg.img.height;
-    if (S > groundY - 4) S = Math.max(12, Math.floor((groundY - 4) / 12) * 12);
-    leadX = HUD_W + 18;
-    wildTargetX = Math.min(W - S - 8, leadX + S + 56);
+    const r = window.StripUI && StripUI.sceneRect();
+    sceneL = r ? r.left : W * 0.3;
+    sceneR = r ? r.right : W * 0.7;
+    S = Math.round(42 * k);                  // bicho: 42 px de altura no design
+    groundY = Math.round(H - 7 * k);         // pés: 2 px do chão + 5 px de folga da plataforma
+    const walkSpan = Math.max(0, sceneR - sceneL - S - 36 * k);
+    if (sim && sim.phase === 'walk' && walkSpan > 0) {
+      // passeia de um lado pro outro (o "stroll" do design), virando no fim
+      const period = 12, t = (sim.walkT || 0) % period;
+      const kx = t < period / 2 ? t / (period / 2) : 2 - t / (period / 2);
+      leadX = Math.round(sceneL + 18 * k + walkSpan * kx);
+      sim.walkFlip = t >= period / 2;
+    } else {
+      leadX = Math.round(sceneL + 18 * k);
+      if (sim) sim.walkFlip = false;
+    }
+    wildTargetX = Math.round(sceneR - 14 * k - S);
+    // a cena muda de largura (o diálogo da pergunta ocupa espaço): o selvagem acompanha
+    if (sim && sim.wild && sim.phase !== 'appear') sim.wildX = wildTargetX;
   }
 
   // ---------- Estado ----------
@@ -74,17 +83,21 @@
   [...state.team, ...state.box, ...state.daycare.mons].forEach((c) => G.ensureMoves(c));
   await A.load();
   A.setPalette(state.settings.palette);
+  StripUI.init(document.body);
+  A.onChange(() => StripUI.icons());
   // fontes de pixel antes do primeiro desenho (sem travar se demorarem)
+  let sim = null; // definido logo abaixo; layout() checa
   await Promise.race([
-    document.fonts.load('12px "DotGothic16"').catch(() => {}),
+    Promise.all([500, 600, 700].map((w) => document.fonts.load(`${w} 16px "Pixelify Sans"`))).catch(() => {}),
     new Promise((r) => setTimeout(r, 1500)),
   ]);
   layout();
 
-  const sim = {
+  sim = {
     phase: 'walk', t: 0, encounterAt: 3,
     wild: null, wildX: 0, wildAlpha: 1,
     turnT: 0, queue: [], bl: null, bw: null, log: [], ppT: 0, defeated: false, catchTries: 0, prompt: null,
+    walkT: 0, walkFlip: false, lastReward: null, xpGain: 0, xpGainT: 0, alertT: 0, sparkT: 0,
     lunge: null, floaters: [], capsule: null,
     toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
@@ -93,8 +106,9 @@
   const nextEncounter = () => G.rand(Math.random, 5, 10);
 
   // ---------- Mensagens ----------
-  function toast(text, seconds = 2.6) {
-    sim.toasts.push({ text, seconds });
+  /** Mensagem na caixa de diálogo da faixa. opts: { sub, kind: 'info'|'success'|'alert' } */
+  function toast(text, seconds = 2.6, opts = {}) {
+    sim.toasts.push({ text, seconds, sub: opts.sub || '', kind: opts.kind || 'info' });
   }
 
   function floater(text, x, y, color = '#fff', life = 1.1, size = 10) {
@@ -149,7 +163,8 @@
     sim.queue = [];
     sim.log = [`Um ${name(sim.wild)} selvagem nv ${sim.wild.level} apareceu!`];
     setPhase('appear');
-    if (sim.wild.shiny) toast(`Um ${name(sim.wild)} brilhante apareceu!`, 4);
+    sim.alertT = 1.6; // "!" em cima do selvagem
+    if (sim.wild.shiny) toast(`Um ${name(sim.wild)} brilhante apareceu!`, 4, { kind: 'alert' });
     sync();
   }
 
@@ -286,6 +301,9 @@
   function win() {
     const lead = G.getLead(state);
     const res = G.rewardWin(state, sim.wild);
+    sim.lastReward = res;
+    sim.xpGain = res.xp;
+    sim.xpGainT = 3; // "+XP" ao lado da barra de EXP
     floater(`+${res.xp} XP`, leadX + S / 2, groundY - S / 2, '#67e8f9');
     if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
     if (res.drop) toast(`O ${G.SPECIES[sim.wild.species].name} deixou cair: ${G.SHOP[res.drop].name}!`, 3);
@@ -349,7 +367,7 @@
       }
       if (e.type === 'learnLater') toast(`${G.SPECIES[c.species].name} pode aprender ${G.MOVES[e.move].name}! Troque no painel.`, 3.5);
       if (e.type === 'evolve') {
-        toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4);
+        toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4, { kind: 'success' });
         sim.flash = 1;
       }
     }
@@ -385,13 +403,15 @@
     if (sim.capsule.success) {
       if (!sim.defeated) { // capturou no meio da luta (clique): ainda não tinha ganhado a XP
         const res = G.rewardWin(state, w);
+        sim.lastReward = res;
         handleXpEvents(res.events, G.getLead(state));
         if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
         if (res.drop) toast(`Encontrou: ${G.SHOP[res.drop].name}!`, 3);
       }
       G.addCaught(state, w);
-      const where = state.box.includes(w) ? ' (foi pra caixa)' : '';
-      toast(`Capturou ${name(w)}!${where}`, 3);
+      const r = sim.lastReward;
+      const sub = [r ? `+${r.xp} EXP` : '', r ? `+${r.coins} moedas` : '', state.box.includes(w) ? 'foi pra caixa' : 'registrado na Dex'].filter(Boolean).join(' · ');
+      toast(`Oba! ${G.SPECIES[w.species].name.toUpperCase()}${w.shiny ? ' ✦' : ''} foi capturado!`, 4.5, { sub, kind: 'success' });
       if (w.held) toast(`${G.SPECIES[w.species].name} estava segurando ${G.HELD[w.held].name}!`, 3);
       setPhase('caught');
     } else if (sim.defeated) {
@@ -431,6 +451,8 @@
     if (sim.glow && (sim.glow.t += dt) > 0.5) sim.glow = null;
     if (sim.hit && (sim.hit.t += dt) > 0.3) sim.hit = null;
     sim.flash = Math.max(0, sim.flash - dt * 0.8);
+    sim.alertT = Math.max(0, sim.alertT - dt);
+    sim.xpGainT = Math.max(0, sim.xpGainT - dt);
     if (sim.phase !== 'rest') sim.anim += dt;
 
     const lead = G.getLead(state);
@@ -451,6 +473,7 @@
 
     switch (sim.phase) {
       case 'walk':
+        sim.walkT += dt;
         sim.scroll += dt * 26;
         lead.hp = Math.min(max, lead.hp + max * 0.15 * dt); // cura entre batalhas
         if ((sim.ppT += dt) > 2.5) { // PP volta aos poucos andando
@@ -523,117 +546,42 @@
     }
   }
 
-  // ---------- Desenho (estilo DS) ----------
-  // Caixas arredondadas com moldura na cor do tema (Assets.PALETTES), texto com sombra,
-  // barras de HP verde/amarelo/vermelho e botões "apertáveis".
-  const T = () => A.palette;
-  const FONT = '"DotGothic16", "Segoe UI", sans-serif'; // um peso só: o "weight" vira tamanho/sombra
+  // ---------- Desenho da cena (canvas) ----------
+  // As placas, diálogos e botões são HTML (strip-ui.js). O canvas desenha o céu/chão, os bichos,
+  // a cápsula, os números flutuando, o "!" do encontro e as faíscas da captura.
+  const FONT = '"Pixelify Sans", monospace';
 
-  /** Texto. Dentro de caixa: tinta com sombra clara. outline: branco com contorno escuro (em cima do cenário). */
-  function text(str, x, y, { size = 12, color, align = 'left', outline = false, shadow = !outline } = {}) {
-    const t = T();
-    ctx.font = `${size}px ${FONT}`;
+  /** Texto do canvas (números flutuando): branco com contorno escuro. */
+  function text(str, x, y, { size = 12, weight = 700, color = '#fff', align = 'center', outline = true } = {}) {
+    ctx.font = `${weight} ${size}px ${FONT}`;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
     x = Math.round(x); y = Math.round(y);
     if (outline) {
       ctx.lineJoin = 'round';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(20,22,30,0.9)';
+      ctx.lineWidth = Math.max(2, size / 4);
+      ctx.strokeStyle = '#383840';
       ctx.strokeText(str, x, y);
-    } else if (shadow) {
-      ctx.fillStyle = t.shadow;
-      ctx.fillText(str, x + 1, y + 1);
     }
-    ctx.fillStyle = color || (outline ? '#fff' : t.ink);
+    ctx.fillStyle = color;
     ctx.fillText(str, x, y);
   }
 
-  function measure(str, size = 12) {
-    ctx.font = `${size}px ${FONT}`;
+  function measure(str, size = 12, weight = 700) {
+    ctx.font = `${weight} ${size}px ${FONT}`;
     return ctx.measureText(str).width;
   }
 
-  function rr(x, y, w, h, r) {
+  function ellipse(cx, cy, rx, ry, color) {
     ctx.beginPath();
-    ctx.roundRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1, r);
-  }
-
-  /** Janela/caixa da era DS: papel com leve degradê, moldura de 2px no tom do tema e filete claro por dentro. */
-  function box(x, y, w, h, { r = 6, frame } = {}) {
-    const t = T();
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, t.paper);
-    g.addColorStop(1, t.paper2);
-    rr(x, y, w, h, r);
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = frame || t.frame;
-    ctx.stroke();
-    if (h > 12) {
-      rr(x + 2, y + 2, w - 4, h - 4, Math.max(2, r - 2));
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = t.frame3;
-      ctx.stroke();
-    }
-  }
-
-  /** Barra de HP/XP: trilho escuro arredondado e preenchimento com brilho em cima. */
-  function bar(x, y, w, h, ratio, color) {
-    rr(x, y, w, h, h / 2);
-    ctx.fillStyle = '#4a4d58';
-    ctx.fill();
-    const fw = Math.round((w - 2) * G.clamp(ratio, 0, 1));
-    if (fw > 0) {
-      rr(x + 1, y + 1, fw + 1, h - 2, (h - 2) / 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, Math.max(0, fw - 2), Math.max(1, Math.floor((h - 2) / 3)));
-    }
-  }
-
-  const hpColor = (r) => (r > 0.5 ? '#3fcf5c' : r > 0.2 ? '#f4c430' : '#ee4a3c');
-
-  /** Etiqueta "HP" laranja das caixas de batalha. */
-  function hpTag(x, y) {
-    rr(x, y, 17, 9, 3);
-    ctx.fillStyle = '#f08a2c';
-    ctx.fill();
-    text('HP', x + 8.5, y + 5, { size: 8, weight: 700, color: '#fff', align: 'center', shadow: false });
-  }
-
-  /** Setinha ▼ vermelha de "continua", piscando. */
-  function arrowDown(x, y) {
-    if (Math.floor(performance.now() / 450) % 2) return;
-    ctx.fillStyle = '#ee4a3c';
-    ctx.beginPath();
-    ctx.moveTo(x, y); ctx.lineTo(x + 7, y); ctx.lineTo(x + 3.5, y + 5); ctx.closePath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = color;
     ctx.fill();
   }
 
-  /** Botão de toque (Sim/Não): degradê, borda escura e "degrau" embaixo; afunda com o mouse em cima. */
-  function pillButton(label, x, y, w, h, { primary = false, hover = false } = {}) {
-    const t = T();
-    const base = primary ? t.frame2 : '#e9ecf2';
-    const edge = primary ? t.frame : '#9aa0ad';
-    const dy = hover ? 1 : 0;
-    rr(x, y + 2, w, h, 6);
-    ctx.fillStyle = edge;
-    ctx.fill();
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, primary ? '#ffffff55' : '#ffffff');
-    g.addColorStop(1, base);
-    rr(x, y + dy, w, h, 6);
-    ctx.fillStyle = base;
-    ctx.fill();
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = edge;
-    ctx.stroke();
-    text(label, x + w / 2, y + h / 2 + dy + 1, { size: 12, weight: 700, align: 'center', color: primary ? '#fff' : '#3a3a44', shadow: !primary });
+  /** Plataforma oval embaixo de um bicho (52×12 no design). */
+  function platform(x, w) {
+    ellipse(x + w / 2, H - 8 * k, 26 * k, 6 * k, '#7cb45a');
   }
 
   /** Criatura (PNG customizado animado ou pixel art), encaixada numa caixa size×size. */
@@ -647,57 +595,18 @@
     A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), x, y, size, size, { alpha });
   }
 
-  /** Moldura 9-slice se existir ui/<name>.png; senão, a caixa de texto clássica. */
-  function frameBox(name, x, y, w, h) {
-    const f = A.ui(name);
-    if (f) A.drawNine(ctx, f, x, y, w, h);
-    else box(x, y, w, h);
-  }
-
-  function icon(name, x, y, size) {
-    const f = A.ui(name);
-    if (!f) return false;
-    ctx.imageSmoothingEnabled = false;
-    const k = size / Math.max(f.img.width, f.img.height);
-    ctx.drawImage(f.img, Math.round(x), Math.round(y - (f.img.height * k) / 2), Math.round(f.img.width * k), Math.round(f.img.height * k));
-    return true;
-  }
-
-  function statusBadge(status, x, y) {
-    const st = G.STATUS[status];
-    rr(x - 1, y - 5, 22, 10, 3);
-    ctx.fillStyle = st.color;
-    ctx.fill();
-    text(st.short, x + 10, y + 1, { size: 8, weight: 700, align: 'center', color: '#fff', shadow: false });
-  }
-
-  function drawHud(lead) {
-    frameBox('hud', 1, 1, HUD_W - 2, H - 2);
-    const max = G.maxHp(lead);
-    const midY = H / 2;
-    const x0 = 8, x1 = HUD_W - 8;
-    text(`${G.SPECIES[lead.species].name}${lead.shiny ? '✦' : ''}`, x0, midY - 12, { size: 13, weight: 700 });
-    if (lead.gender) {
-      const nw = measure(`${G.SPECIES[lead.species].name}${lead.shiny ? '✦' : ''}`, 13, 700);
-      text(lead.gender === 'F' ? '♀' : '♂', x0 + nw + 3, midY - 12, { size: 14, color: lead.gender === 'F' ? '#e0578a' : '#3b7ddd' });
-    }
-    if (lead.status) statusBadge(lead.status, x1 - 52, midY - 12);
-    text(`Nv${lead.level}`, x1, midY - 12, { size: 12, weight: 700, align: 'right' });
-    hpTag(x0, midY - 5);
-    bar(x0 + 19, midY - 5, x1 - x0 - 19, 9, lead.hp / max, hpColor(lead.hp / max));
-    bar(x0 + 19, midY + 5, x1 - x0 - 19, 4, lead.xp / G.xpToNext(lead.level), '#3a9bf0');
-    // moedas e cápsulas com os ícones em pixel
-    const caps = (state.items.capsula || 0) + (state.items.super || 0);
-    const yRow = midY + 15;
-    if (!icon('coin', x0 - 1, yRow, 11)) A.drawSheet(ctx, A.creature('_coin'), 0, x0 - 1, yRow - 6, 11, 11);
-    text(`${state.coins}`, x0 + 12, yRow, { size: 11, weight: 600 });
-    const cw = measure(String(caps), 11, 600);
-    if (!icon('capsule', x1 - cw - 13, yRow, 11)) A.drawSheet(ctx, A.item('capsula'), 0, x1 - cw - 13, yRow - 6, 11, 11);
-    text(`${caps}`, x1, yRow, { size: 11, weight: 600, align: 'right' });
-  }
-
   function drawGround() {
-    // Tiles infinitos: fundo (parallax lento) + chão, rolando enquanto o líder anda.
+    // céu e grama em faixas, como no design (20/14/18/22 px do topo, o resto é grama)
+    const bands = [[20, '#c4e6f6'], [14, '#d8f0ee'], [18, '#bfe6a0'], [22, '#acdc8c'], [999, '#98ce78']];
+    let y0 = 0;
+    for (const [h, c] of bands) {
+      const hh = Math.min(H - y0, Math.ceil(h * k));
+      ctx.fillStyle = c;
+      ctx.fillRect(0, Math.floor(y0), W, hh + 1);
+      y0 += h * k;
+      if (y0 >= H) break;
+    }
+    // tiles customizados da zona (pasta de sprites) por cima, rolando enquanto anda
     if (bg) {
       const h = bg.img.height * bgScale;
       A.drawTiled(ctx, bg.img, bgScale, sim.scroll * (bg.cfg.speed ?? 0.35), 0, W, H - h + (bg.cfg.offsetY || 0) * bgScale);
@@ -705,19 +614,27 @@
     if (ground) {
       const h = ground.img.height * groundScale;
       A.drawTiled(ctx, ground.img, groundScale, sim.scroll * (ground.cfg.speed ?? 1), 0, W, H - h);
-      return;
     }
-    if (bg) return;
-    const zone = G.ZONES.find((z) => z.id === state.zone) || G.ZONES[0];
-    ctx.fillStyle = zone.color;
-    ctx.globalAlpha = 0.9;
-    const span = W - HUD_W;
-    for (let i = 0; i < Math.ceil(span / 34) + 1; i++) {
-      const x = HUD_W + ((((i * 34 - sim.scroll) % span) + span) % span);
-      ctx.fillRect(Math.round(x), groundY - 2, 2, 2);
-      ctx.fillRect(Math.round(x) + 3, groundY - 3, 2, 3);
-    }
-    ctx.globalAlpha = 1;
+  }
+
+  /** "!" de alerta em cima do selvagem quando ele aparece (balãozinho do design). */
+  function drawAlert(x, y) {
+    const w = 22 * k, h = 26 * k, dy = Math.floor(sim.alertT * 5) % 2 ? -5 * k : 0;
+    const bx = Math.round(x - w / 2), by = Math.round(y - h + dy);
+    ctx.fillStyle = '#566072';
+    ctx.beginPath(); ctx.roundRect(bx, by, Math.round(w), Math.round(h), 6 * k); ctx.fill();
+    ctx.fillStyle = '#f8f8f8';
+    ctx.beginPath(); ctx.roundRect(bx + 3 * k, by + 3 * k, Math.round(w - 6 * k), Math.round(h - 6 * k), 3 * k); ctx.fill();
+    text('!', bx + w / 2, by + h / 2 + k, { size: Math.round(17 * k), color: '#c82838', outline: false });
+  }
+
+  /** Faísca em "+" (captura), piscando. */
+  function spark(x, y, s, on) {
+    if (!on) return;
+    const q = Math.max(1, Math.round(6 * k * s));
+    ctx.fillStyle = '#fff6a8';
+    ctx.fillRect(x, y, q, q);
+    ctx.fillRect(x, y - q, q, q); ctx.fillRect(x, y + q, q, q); ctx.fillRect(x - q, y, q, q); ctx.fillRect(x + q, y, q, q);
   }
 
   // pisca quando leva dano; brilho colorido quando usa golpe de status
@@ -744,28 +661,24 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     if (cursor) hover(cursor.x, cursor.y); // a cena muda embaixo do cursor parado (ex.: a pergunta aparece)
-    if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
     layout();
     const lead = G.getLead(state);
-
-    if (!state.starterChosen || !lead) {
-      frameBox('hud', 1, 1, W - 2, H - 2);
-      text('Clique aqui pra escolher seu parceiro!', W / 2, H / 2, { size: 14, weight: 700, align: 'center' });
-      arrowDown(W - 16, H - 13);
-      return;
-    }
+    StripUI.update(view(lead));
+    if (!state.starterChosen || !lead) return;
 
     drawGround();
+    if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
     const y = groundY - S;
 
-    // líder
+    // líder (passeia virando no fim; pula de leve)
     const walking = sim.phase === 'walk';
-    const animated = A.creature(lead.species, lead.shiny).frames > 1; // folha animada dispensa o "pulinho"
-    const bob = walking && !animated ? Math.round(Math.abs(Math.sin(sim.t * 9)) * -2) : 0;
+    const animated = A.creature(lead.species, lead.shiny).frames > 1;
+    const bob = !animated && (walking || sim.phase === 'caught') ? (Math.floor(sim.t * (walking ? 3.3 : 5)) % 2 ? -Math.round(3 * k) : 0) : 0;
     const resting = sim.phase === 'rest';
+    platform(leadX, S);
     drawGlow('lead', leadX, y);
-    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), y + bob, { alpha: resting ? 0.45 : blinkAlpha('lead') });
-    if (resting) text('z', leadX + S + 2 + Math.sin(sim.t * 3) * 2, y + 4 - ((sim.t * 6) % 8), { size: 10, color: '#c7d2fe' });
+    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), y + bob, { alpha: resting ? 0.45 : blinkAlpha('lead'), flip: sim.walkFlip });
+    if (resting) text('z', leadX + S + 3 + Math.sin(sim.t * 3) * 2, y + 6 - ((sim.t * 6) % 8), { size: Math.round(14 * k), color: '#e8ecff' });
     if (sim.flash > 0) {
       ctx.globalAlpha = sim.flash;
       ctx.fillStyle = '#fff';
@@ -777,51 +690,47 @@
     const w = sim.wild;
     if (w && sim.phase !== 'shake' && sim.phase !== 'caught') {
       const wx = sim.wildX - lungeOffset('wild');
+      const wbob = sim.phase === 'fight' && !sim.defeated && Math.floor(sim.t * 4) % 2 ? -Math.round(3 * k) : 0;
+      platform(wx, S);
       drawGlow('wild', wx, y);
       // derrotado: fica caído e meio apagado esperando a captura
-      sprite(w.species, w.shiny, wx, y, { flip: true, alpha: (sim.defeated ? 0.5 : 1) * sim.wildAlpha * blinkAlpha('wild'), t: sim.defeated ? 0 : sim.anim });
+      sprite(w.species, w.shiny, wx, y + wbob, { flip: true, alpha: (sim.defeated ? 0.5 : 1) * sim.wildAlpha * blinkAlpha('wild'), t: sim.defeated ? 0 : sim.anim });
       if (sim.defeated && sim.phase === 'down') {
-        text('clique pra capturar', wx + S / 2, y - 6, { size: 11, weight: 700, align: 'center', outline: true });
+        text('clique pra capturar', wx + S / 2, y - 4 * k, { size: Math.round(16 * k) });
       }
-      if (!sim.defeated && ['appear', 'fight', 'throw'].includes(sim.phase)) {
-        const max = G.maxHp(w);
-        // plaquinha do selvagem (como no topo da tela de batalha): nome, nível e HP
-        const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''}${w.shiny ? '✦' : ''} Nv${w.level}`;
-        const lw = Math.max(52, Math.ceil(measure(label, 11, 700)) + 12);
-        const lx = Math.round(Math.min(W - lw - 2, Math.max(HUD_W + 2, wx + S / 2 - lw / 2)));
-        const ly = Math.max(0, y - 19);
-        box(lx, ly, lw, 18, { r: 5 });
-        text(label, lx + lw / 2, ly + 7, { size: 11, weight: 700, align: 'center' });
-        bar(lx + 4, ly + 12, lw - 8, 4, w.hp / max, hpColor(w.hp / max));
-        if (w.status) statusBadge(w.status, lx + lw + 3, ly + 9);
-      }
+      if (sim.alertT > 0) drawAlert(wx + S / 2 + 6 * k, y - 2 * k);
     }
 
     // cápsula
-    const capSize = Math.round(S / 2);
+    const capSize = Math.round(S * 0.6);
     if (sim.phase === 'throw') {
-      const k = sim.t / 0.55;
+      const kk = sim.t / 0.55;
       const x0 = leadX + S, x1 = wildTargetX + S / 4;
-      const cx = x0 + (x1 - x0) * k;
-      const cy = y + S / 3 - Math.sin(Math.PI * k) * (H * 0.35);
+      const cx = x0 + (x1 - x0) * kk;
+      const cy = y + S / 3 - Math.sin(Math.PI * kk) * (H * 0.35);
       itemSprite(sim.capsule.item, cx, cy, { size: capSize });
-    } else if (sim.phase === 'shake' || (sim.phase === 'caught')) {
+    } else if (sim.phase === 'shake' || sim.phase === 'caught') {
       const wob = sim.phase === 'shake' ? Math.round(Math.sin(sim.t * 14) * 2) * (Math.floor(sim.t / 0.5) % 2) : 0;
-      itemSprite(sim.capsule.item, wildTargetX + S / 4 + wob, groundY - capSize, { size: capSize, alpha: sim.phase === 'caught' ? 1 - sim.t : 1 });
+      const cx = wildTargetX + (S - capSize) / 2 + wob;
+      platform(wildTargetX + (S - capSize) / 2, capSize);
+      itemSprite(sim.capsule.item, cx, groundY - capSize, { size: capSize, alpha: 1 });
+      if (sim.phase === 'caught') { // faíscas piscando (como no design)
+        const tw = Math.floor(sim.t / 0.4) % 2 === 0;
+        spark(Math.round(cx - 18 * k), Math.round(groundY - capSize - 6 * k), 1, tw);
+        spark(Math.round(cx + capSize + 14 * k), Math.round(groundY - capSize - 14 * k), 1, !tw);
+        spark(Math.round(cx - 30 * k), Math.round(groundY - 8 * k), 0.66, !tw);
+      }
     }
 
-    // números flutuando
+    // números flutuando (presos na cena)
     for (const f of sim.floaters) {
       ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
-      // números/nomes flutuando: tom claro com contorno escuro (no Color, a cor do evento)
-      const fs = (f.size || 10) >= 12 ? 15 : 11;
-      const half = measure(f.text, fs, 700) / 2 + 2; // não deixa o texto entrar embaixo do HUD nem sair da faixa
-      const fx = Math.min(W - half, Math.max(HUD_W + half, f.x));
-      text(f.text, fx, f.y - f.t * 12, { size: fs, weight: 700, align: 'center', color: f.color, outline: true });
+      const fs = Math.round(((f.size || 10) >= 12 ? 22 : 16) * k);
+      const half = measure(f.text, fs) / 2 + 2;
+      const fx = Math.min(sceneR - half, Math.max(sceneL + half, f.x));
+      text(f.text, fx, f.y - f.t * 12, { size: fs, color: f.color });
       ctx.globalAlpha = 1;
     }
-
-    drawHud(lead);
 
     if (debug && debug.on) {
       const hit = cursor ? hitTest(cursor.x, cursor.y) : null;
@@ -829,43 +738,50 @@
         `mouse ${cursor ? `${Math.round(cursor.x)},${Math.round(cursor.y)}` : '—'} ${hit || '-'} · ${clickThrough ? 'atravessa' : 'PEGA'} · dpr ${dpr}`,
         `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · botão ${debug.reader ? 'lido' : 'SEM leitor'} · clique ${debug.lastClick || '—'}`,
       ];
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = 'rgba(20,22,30,0.9)';
-      ctx.fillRect(HUD_W, H - 22, W - HUD_W, 22);
-      lines.forEach((l, i) => text(l, HUD_W + 4, H - 16 + i * 10, { size: 9, weight: 400, color: '#cdf5dc', shadow: false }));
+      ctx.fillRect(sceneL, H - 22, sceneR - sceneL, 22);
+      lines.forEach((l, i) => text(l, sceneL + 4, H - 16 + i * 10, { size: 9, weight: 500, color: '#cdf5dc', align: 'left', outline: false }));
     }
-    // pergunta de captura (no lugar dos avisos enquanto espera resposta)
-    sim.askRects = null;
-    if (sim.phase === 'prompt' && sim.wild) {
-      const w2 = sim.wild;
-      const nm = `${G.SPECIES[w2.species].name}${w2.gender ? (w2.gender === 'F' ? '♀' : '♂') : ''}`;
+  }
+
+  /** O que a camada HTML mostra agora. */
+  function view(lead) {
+    const zoneIdx = Math.max(0, G.ZONES.findIndex((z) => z.id === state.zone));
+    const zone = G.ZONES[zoneIdx];
+    const caps = (state.items.capsula || 0) + (state.items.super || 0);
+    const over = cursor && hitTest(cursor.x, cursor.y);
+    const v = {
+      width: W, height: H, starter: !state.starterChosen || !lead, mode: 'explore',
+      zone: `ZONA ${zoneIdx + 1} · ${zone.name.toUpperCase()}`, coins: state.coins, caps, hot: over, foe: null, dialog: null,
+    };
+    if (v.starter) {
+      v.dialog = { kind: 'info', title: 'Clique aqui pra escolher seu parceiro!', more: true };
+      return v;
+    }
+    v.lead = {
+      species: lead.species, shiny: lead.shiny, name: G.SPECIES[lead.species].name + (lead.shiny ? ' ✦' : ''), g: lead.gender,
+      lv: lead.level, hp: lead.hp, max: G.maxHp(lead), xp: G.clamp(lead.xp / G.xpToNext(lead.level), 0, 1),
+      st: lead.status ? G.STATUS[lead.status] : null, xpGain: sim.xpGainT > 0 ? sim.xpGain : 0,
+    };
+    const w = sim.wild;
+    if (w && !sim.defeated && ['appear', 'fight', 'throw'].includes(sim.phase)) {
+      v.foe = { name: G.SPECIES[w.species].name + (w.shiny ? ' ✦' : ''), g: w.gender, lv: w.level, hp: w.hp, max: G.maxHp(w), st: w.status ? G.STATUS[w.status] : null };
+    }
+    if (sim.phase === 'prompt' && w) {
+      const nm = StripUI.esc(G.SPECIES[w.species].name.toUpperCase());
       const left = Math.max(0, Math.ceil(PROMPT_S - sim.t));
-      const q = sim.prompt === 'retry'
-        ? `Escapou! Tentar outra? (${left}s)`
-        : `Capturar ${nm}${state.dex.caught[w2.species] ? '' : ' (novo!)'}? (${left}s)`;
-      // caixa de mensagem com a pergunta + botões Sim / Não (afundam com o mouse em cima)
-      const qw = measure(q, 12, 600);
-      const bw = 38, bh = 15, gap = 5;
-      const total = Math.ceil(qw) + 20 + bw * 2 + gap;
-      const qx = Math.round(Math.max(HUD_W + 2, Math.min(W - total - 2, (HUD_W + W) / 2 - total / 2)));
-      frameBox('toast', qx, 1, total, 21);
-      text(q, qx + 9, 12, { size: 12 });
-      const yesX = qx + total - bw * 2 - gap - 4, noX = yesX + bw + gap;
-      const over = cursor && hitTest(cursor.x, cursor.y);
-      pillButton('Sim', yesX, 2, bw, bh, { primary: true, hover: over === 'askYes' });
-      pillButton('Não', noX, 2, bw, bh, { hover: over === 'askNo' });
-      sim.askRects = { yes: [yesX, 1, bw, 20], no: [noX, 1, bw, 20] };
+      v.mode = 'prompt';
+      v.dialog = {
+        kind: w.shiny || !state.dex.caught[w.species] ? 'alert' : 'info',
+        title: sim.prompt === 'retry' ? `<strong>${nm}</strong> escapou da cápsula!` : `<strong>${nm}</strong> foi derrotado${state.dex.caught[w.species] ? '' : ' (novo!)'}`,
+        ask: { q: sim.prompt === 'retry' ? 'Tentar outra?' : 'Capturar?', left, frac: Math.max(0, 1 - sim.t / PROMPT_S) },
+      };
     } else if (sim.toast) {
-      // mensagem: caixa de texto no topo com a setinha ▼ vermelha piscando
-      const t = sim.toast;
-      const a = Math.min(1, t.t / 0.15, (t.seconds - t.t) / 0.25);
-      ctx.globalAlpha = Math.max(0, a);
-      const tw = Math.ceil(measure(t.text, 12, 600)) + 26;
-      const tx = Math.round(Math.max(HUD_W + 2, Math.min(W - tw - 2, (HUD_W + W) / 2 - tw / 2)));
-      frameBox('toast', tx, 1, tw, 19);
-      text(t.text, tx + 9, 11, { size: 12 });
-      arrowDown(tx + tw - 13, 9);
-      ctx.globalAlpha = 1;
+      v.mode = 'toast';
+      v.dialog = { kind: sim.toast.kind, title: StripUI.esc(sim.toast.text), sub: sim.toast.sub, more: true };
     }
+    return v;
   }
 
   // ---------- Mouse ----------
@@ -875,12 +791,9 @@
 
   function hitTest(x, y) {
     if (!state.starterChosen) return 'hud';
-    const r = sim.askRects;
-    const inR = (q) => q && x >= q[0] && x <= q[0] + q[2] && y >= q[1] && y <= q[1] + q[3];
-    if (r && inR(r.yes)) return 'askYes';
-    if (r && inR(r.no)) return 'askNo';
+    const ui = StripUI.hit(x, y); // placas e botões HTML (data-hit)
+    if (ui) return ui;
     const top = groundY - S;
-    if (x < HUD_W) return 'hud';
     if (x >= leadX && x <= leadX + S && y >= top) return 'lead';
     if (sim.wild && ['fight', 'down'].includes(sim.phase) && x >= sim.wildX && x <= sim.wildX + S && y >= top - 14) return 'wild';
     return null;
@@ -923,7 +836,8 @@
     const now = performance.now();
     if (now - lastAction < 400) return;
     lastAction = now;
-    if (hit === 'hud' || hit === 'lead') bridge.openPanel();
+    if (hit === 'hud' || hit === 'lead') bridge.openPanel('team');
+    if (hit.startsWith('menu:')) bridge.openPanel(hit.slice(5));
     if (hit === 'askYes') answerCatch(true);
     if (hit === 'askNo') answerCatch(false);
     if (hit === 'wild') {

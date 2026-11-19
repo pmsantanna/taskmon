@@ -43,7 +43,15 @@
     save: (data) => localStorage.setItem('taskmon-save', JSON.stringify(data)),
     setClickThrough: () => {},
     windowControl: (action) => { if (action === 'close') window.close(); },
-    openPanel: () => window.open('panel.html', 'taskmon-panel', 'width=480,height=720'),
+    openPanel: (section) => {
+      const w = window.open(`panel.html${section ? `#${section}` : ''}`, 'taskmon-panel', 'width=512,height=818');
+      if (w && section) ch.postMessage({ kind: 'goto', payload: section });
+    },
+    onGoto: (cb) => {
+      listeners.goto = listeners.goto || [];
+      listeners.goto.push(cb);
+      if (location.hash.length > 1) setTimeout(() => cb(location.hash.slice(1)), 0);
+    },
     pushState: (s) => ch.postMessage({ kind: 'state', payload: s }),
     onState: (cb) => listeners.state.push(cb),
     sendCommand: (c) => ch.postMessage({ kind: 'cmd', payload: c }),
