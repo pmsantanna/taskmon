@@ -204,12 +204,13 @@
     }`;
   }
 
-  /** Paleta (4 tons) nas variáveis CSS; body.gb nas monocromáticas. */
+  /** Cores do tema (moldura) nas variáveis CSS. */
   function applyPalette() {
     const p = A.palette;
     const root = document.documentElement.style;
-    p.c.forEach((c, i) => root.setProperty(`--c${i}`, c));
-    document.body.classList.toggle('gb', p.gb);
+    const vars = { frame: p.frame, frame2: p.frame2, frame3: p.frame3, bg1: p.bg1, bg2: p.bg2, paper: p.paper, paper2: p.paper2, ink: p.ink, 'ink-soft': p.inkSoft, shadow: p.shadow };
+    for (const [k, v] of Object.entries(vars)) root.setProperty(`--${k}`, v);
+    document.body.classList.toggle('dark', !!p.dark);
     document.body.dataset.pal = A.paletteId;
   }
 
@@ -558,7 +559,7 @@
           <div class="palettes">${Object.entries(A.PALETTES).map(([id, p]) => `
             <button class="pal ${A.paletteId === id ? 'on' : ''}" data-cmd="palette" data-id="${id}">
               ${esc(p.name)}
-              <span class="sw">${p.c.map((c) => `<i style="background:${c}"></i>`).join('')}</span>
+              <span class="sw">${[p.frame, p.frame2, p.frame3, p.paper].map((c) => `<i style="background:${c}"></i>`).join('')}</span>
             </button>`).join('')}
           </div>
         </div>

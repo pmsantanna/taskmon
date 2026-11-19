@@ -84,66 +84,31 @@
     return c;
   }
 
-  // ---------- Paletas (estilo Game Boy) ----------
-  // 4 tons, do mais escuro (0) ao mais claro (3). gb = sprites convertidos pros 4 tons.
+  // ---------- Temas (estilo DS) ----------
+  // Cor da moldura das janelas/caixas, como a escolha de moldura dos jogos da era DS.
+  // frame = escura (bordas), frame2 = média (botões), frame3 = clara (fundos), bg1/bg2 = listras do
+  // fundo, paper/ink = caixa e texto, shadow = sombra do texto. dark = tema escuro.
   const PALETTES = {
-    dmg:    { name: 'Clássico (verde)', gb: true,  c: ['#0f380f', '#306230', '#8bac0f', '#9bbc0f'] },
-    pocket: { name: 'Pocket (cinza)',   gb: true,  c: ['#1a1a17', '#55554b', '#a5a593', '#dcdccb'] },
-    light:  { name: 'Light (azulado)',  gb: true,  c: ['#0c2a3a', '#1f5d6e', '#6fb3b0', '#c9ead7'] },
-    color:  { name: 'Color (colorido)', gb: false, c: ['#1b1b2f', '#3d4a7a', '#a9b8e6', '#f4f4ec'] },
+    azul:     { name: 'Azul',     frame: '#2b5a9e', frame2: '#4d86d6', frame3: '#d6e6fb', bg1: '#e9f1fb', bg2: '#dce8f7', paper: '#fdfdfb', paper2: '#eef2f7', ink: '#3a3a44', inkSoft: '#767684', shadow: '#d6d6ce' },
+    vermelho: { name: 'Vermelho', frame: '#a8323a', frame2: '#de5a5f', frame3: '#fbdcdb', bg1: '#fbefee', bg2: '#f5e1df', paper: '#fdfdfb', paper2: '#f7efee', ink: '#3a3a44', inkSoft: '#7a7078', shadow: '#d8d2ce' },
+    verde:    { name: 'Verde',    frame: '#2c7d48', frame2: '#4bb369', frame3: '#d6f2dc', bg1: '#edf7ef', bg2: '#ddefe1', paper: '#fdfdfb', paper2: '#eef5ef', ink: '#3a3a44', inkSoft: '#6f7a72', shadow: '#d4d8ce' },
+    noite:    { name: 'Noite',    frame: '#6a7cff', frame2: '#4a56b8', frame3: '#2c3154', bg1: '#1d2030', bg2: '#22263a', paper: '#2b2f45', paper2: '#343955', ink: '#eef0ff', inkSoft: '#a3a8c8', shadow: '#151826', dark: true },
   };
-  let palette = PALETTES.dmg;
-  let paletteId = 'dmg';
+  let palette = PALETTES.azul;
+  let paletteId = 'azul';
 
   function setPalette(id) {
-    if (!PALETTES[id] || id === paletteId) return false;
+    if (!PALETTES[id]) id = 'azul'; // saves com as paletas antigas (dmg, pocket...) caem no azul
+    if (id === paletteId) return false;
     paletteId = id;
     palette = PALETTES[id];
-    cache.clear();
     version++;
     listeners.forEach((cb) => cb());
     return true;
   }
 
-  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-
-  /** Converte uma imagem pros 4 tons da paleta pela luminosidade (transparência mantida). */
-  function toPalette(src) {
-    const c = document.createElement('canvas');
-    c.width = src.width;
-    c.height = src.height;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(src, 0, 0);
-    const img = ctx.getImageData(0, 0, c.width, c.height);
-    const d = img.data;
-    const tones = palette.c.map(hexRgb);
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] < 8) continue;
-      const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      const t = tones[l < 60 ? 0 : l < 135 ? 1 : l < 205 ? 2 : 3];
-      d[i] = t[0]; d[i + 1] = t[1]; d[i + 2] = t[2]; d[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
-  }
-
-  /** Aplica a paleta numa folha (cacheada por paleta). */
-  function themed(ck, build) {
-    const key = `${paletteId}:${ck}`;
-    if (cache.has(key)) return cache.get(key);
-    let sheet = build();
-    if (palette.gb) sheet = { ...sheet, src: toPalette(sheet.src), _url: null };
-    cache.set(key, sheet);
-    return sheet;
-  }
-
-  function creature(id, shiny = false) {
-    return themed(`c:${id}:${shiny ? 1 : 0}`, () => creatureRaw(id, shiny));
-  }
-
-  function item(id) {
-    return themed(`i:${id}`, () => itemRaw(id));
-  }
+  const creature = (id, shiny = false) => creatureRaw(id, shiny);
+  const item = (id) => itemRaw(id);
 
   function creatureRaw(id, shiny = false) {
     const ck = `c:${id}:${shiny ? 1 : 0}`;
@@ -280,7 +245,7 @@
   }
 
   function silhouetteUrl(id) {
-    const ck = `${paletteId}:sil:${id}`;
+    const ck = `sil:${id}`;
     if (cache.has(ck)) return cache.get(ck);
     const sheet = creature(id, false);
     const scale = sheet.custom ? 1 : 8;
@@ -291,7 +256,7 @@
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(sheet.src, 0, 0, sheet.fw, sheet.fh, 0, 0, c.width, c.height);
     ctx.globalCompositeOperation = 'source-in';
-    ctx.fillStyle = palette.gb ? palette.c[1] : '#4a443e';
+    ctx.fillStyle = '#5a5f6e';
     ctx.fillRect(0, 0, c.width, c.height);
     const url = c.toDataURL();
     cache.set(ck, url);

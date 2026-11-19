@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'" />
   <title>Taskmon</title>
-  <link rel="stylesheet" href="gb.css" />
+  <link rel="stylesheet" href="ds.css" />
   <style id="theme"></style>
 </head>
 <body>
   <header>
     <span class="led" title="Ligado"></span>
-    <h1>TASKMON<small>DOT MATRIX</small></h1>
+    <h1>TASKMON<small>dual screen</small></h1>
     <span class="chip coins" id="coins">0</span>
     <span class="chip caps" id="caps">0</span>
     <button class="gear" id="gear" title="Ajustes" aria-label="Ajustes">⚙</button>
@@ -18,6 +18,7 @@
     <button class="winbtn close" data-win="close" title="Fechar" aria-label="Fechar">X</button>
   </header>
   <div id="hero"></div>
+  <div class="hinge" aria-hidden="true"></div>
   <nav id="tabs" hidden></nav>
   <main id="app"><p class="muted">Conectando com a barra de tarefas…</p></main>
   <dialog id="modal"></dialog>

@@ -76,7 +76,7 @@
   A.setPalette(state.settings.palette);
   // fontes de pixel antes do primeiro desenho (sem travar se demorarem)
   await Promise.race([
-    Promise.all(['8px "Press Start 2P"', '16px "VT323"'].map((f) => document.fonts.load(f))).catch(() => {}),
+    document.fonts.load('12px "DotGothic16"').catch(() => {}),
     new Promise((r) => setTimeout(r, 1500)),
   ]);
   layout();
@@ -523,77 +523,117 @@
     }
   }
 
-  // ---------- Desenho (estilo Game Boy) ----------
-  // Tudo nos 4 tons da paleta (Assets.PALETTES): C(0) mais escuro … C(3) mais claro.
-  const C = (i) => A.palette.c[i];
-  const FONT_UI = '"Press Start 2P", monospace'; // títulos, números, menus (nítida em 8px)
-  const FONT_TX = '"VT323", monospace';          // frases (cabe mais texto)
+  // ---------- Desenho (estilo DS) ----------
+  // Caixas arredondadas com moldura na cor do tema (Assets.PALETTES), texto com sombra,
+  // barras de HP verde/amarelo/vermelho e botões "apertáveis".
+  const T = () => A.palette;
+  const FONT = '"DotGothic16", "Segoe UI", sans-serif'; // um peso só: o "weight" vira tamanho/sombra
 
-  /** Texto. outline = contorno escuro pra ler em cima do cenário/barra; sem outline, dentro de caixas. */
-  function text(str, x, y, { size = 8, color = C(0), align = 'left', font = 'ui', outline = false } = {}) {
-    ctx.font = `${size}px ${font === 'ui' ? FONT_UI : FONT_TX}`;
+  /** Texto. Dentro de caixa: tinta com sombra clara. outline: branco com contorno escuro (em cima do cenário). */
+  function text(str, x, y, { size = 12, color, align = 'left', outline = false, shadow = !outline } = {}) {
+    const t = T();
+    ctx.font = `${size}px ${FONT}`;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
     x = Math.round(x); y = Math.round(y);
     if (outline) {
-      ctx.lineJoin = 'miter';
+      ctx.lineJoin = 'round';
       ctx.lineWidth = 3;
-      ctx.strokeStyle = C(0);
+      ctx.strokeStyle = 'rgba(20,22,30,0.9)';
       ctx.strokeText(str, x, y);
+    } else if (shadow) {
+      ctx.fillStyle = t.shadow;
+      ctx.fillText(str, x + 1, y + 1);
     }
-    ctx.fillStyle = color;
+    ctx.fillStyle = color || (outline ? '#fff' : t.ink);
     ctx.fillText(str, x, y);
   }
 
-  function measure(str, size = 8, font = 'ui') {
-    ctx.font = `${size}px ${font === 'ui' ? FONT_UI : FONT_TX}`;
+  function measure(str, size = 12) {
+    ctx.font = `${size}px ${FONT}`;
     return ctx.measureText(str).width;
   }
 
-  /** Caixa de texto clássica: fundo claro, borda escura de 2px, linha interna e cantos de pixel. */
-  function box(x, y, w, h, { fill = C(3), border = C(0), inner = C(1) } = {}) {
-    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-    ctx.fillStyle = border;
-    ctx.fillRect(x + 1, y, w - 2, h);
-    ctx.fillRect(x, y + 1, w, h - 2);
-    ctx.fillStyle = fill;
-    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-    if (inner && w > 10 && h > 10) {
-      ctx.fillStyle = inner;
-      ctx.fillRect(x + 3, y + 3, w - 6, 1);
-      ctx.fillRect(x + 3, y + h - 4, w - 6, 1);
-      ctx.fillRect(x + 3, y + 3, 1, h - 6);
-      ctx.fillRect(x + w - 4, y + 3, 1, h - 6);
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1, r);
+  }
+
+  /** Janela/caixa da era DS: papel com leve degradê, moldura de 2px no tom do tema e filete claro por dentro. */
+  function box(x, y, w, h, { r = 6, frame } = {}) {
+    const t = T();
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, t.paper);
+    g.addColorStop(1, t.paper2);
+    rr(x, y, w, h, r);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = frame || t.frame;
+    ctx.stroke();
+    if (h > 12) {
+      rr(x + 2, y + 2, w - 4, h - 4, Math.max(2, r - 2));
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = t.frame3;
+      ctx.stroke();
     }
   }
 
-  /** Barra de HP/XP: moldura escura de 1px e preenchimento. */
+  /** Barra de HP/XP: trilho escuro arredondado e preenchimento com brilho em cima. */
   function bar(x, y, w, h, ratio, color) {
-    x = Math.round(x); y = Math.round(y);
-    ctx.fillStyle = C(0);
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = C(3);
-    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-    ctx.fillStyle = color;
-    ctx.fillRect(x + 1, y + 1, Math.round((w - 2) * G.clamp(ratio, 0, 1)), h - 2);
+    rr(x, y, w, h, h / 2);
+    ctx.fillStyle = '#4a4d58';
+    ctx.fill();
+    const fw = Math.round((w - 2) * G.clamp(ratio, 0, 1));
+    if (fw > 0) {
+      rr(x + 1, y + 1, fw + 1, h - 2, (h - 2) / 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, Math.max(0, fw - 2), Math.max(1, Math.floor((h - 2) / 3)));
+    }
   }
 
-  function hpColor(r) {
-    if (A.palette.gb) return r > 0.2 || Math.floor(sim.t * 4) % 2 ? C(r > 0.5 ? 0 : 1) : C(2); // pisca quando está baixo
-    return r > 0.5 ? '#3fa34d' : r > 0.2 ? '#d8a10b' : '#c0392b';
+  const hpColor = (r) => (r > 0.5 ? '#3fcf5c' : r > 0.2 ? '#f4c430' : '#ee4a3c');
+
+  /** Etiqueta "HP" laranja das caixas de batalha. */
+  function hpTag(x, y) {
+    rr(x, y, 17, 9, 3);
+    ctx.fillStyle = '#f08a2c';
+    ctx.fill();
+    text('HP', x + 8.5, y + 5, { size: 8, weight: 700, color: '#fff', align: 'center', shadow: false });
   }
 
-  /** Setinha ▼ de "continua" piscando, desenhada em pixels. */
+  /** Setinha ▼ vermelha de "continua", piscando. */
   function arrowDown(x, y) {
     if (Math.floor(performance.now() / 450) % 2) return;
-    ctx.fillStyle = C(0);
-    ctx.fillRect(x, y, 5, 1); ctx.fillRect(x + 1, y + 1, 3, 1); ctx.fillRect(x + 2, y + 2, 1, 1);
+    ctx.fillStyle = '#ee4a3c';
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + 7, y); ctx.lineTo(x + 3.5, y + 5); ctx.closePath();
+    ctx.fill();
   }
 
-  /** Cursor ▶ de menu, em pixels. */
-  function arrowRight(x, y) {
-    ctx.fillStyle = C(0);
-    ctx.fillRect(x, y - 3, 1, 7); ctx.fillRect(x + 1, y - 2, 1, 5); ctx.fillRect(x + 2, y - 1, 1, 3); ctx.fillRect(x + 3, y, 1, 1);
+  /** Botão de toque (Sim/Não): degradê, borda escura e "degrau" embaixo; afunda com o mouse em cima. */
+  function pillButton(label, x, y, w, h, { primary = false, hover = false } = {}) {
+    const t = T();
+    const base = primary ? t.frame2 : '#e9ecf2';
+    const edge = primary ? t.frame : '#9aa0ad';
+    const dy = hover ? 1 : 0;
+    rr(x, y + 2, w, h, 6);
+    ctx.fillStyle = edge;
+    ctx.fill();
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, primary ? '#ffffff55' : '#ffffff');
+    g.addColorStop(1, base);
+    rr(x, y + dy, w, h, 6);
+    ctx.fillStyle = base;
+    ctx.fill();
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = edge;
+    ctx.stroke();
+    text(label, x + w / 2, y + h / 2 + dy + 1, { size: 12, weight: 700, align: 'center', color: primary ? '#fff' : '#3a3a44', shadow: !primary });
   }
 
   /** Criatura (PNG customizado animado ou pixel art), encaixada numa caixa size×size. */
@@ -625,30 +665,35 @@
 
   function statusBadge(status, x, y) {
     const st = G.STATUS[status];
-    ctx.fillStyle = A.palette.gb ? C(1) : st.color;
-    ctx.fillRect(Math.round(x - 1), Math.round(y - 5), 21, 10);
-    text(st.short, x + 9.5, y + 1, { size: 12, font: 'tx', align: 'center', color: C(3) });
+    rr(x - 1, y - 5, 22, 10, 3);
+    ctx.fillStyle = st.color;
+    ctx.fill();
+    text(st.short, x + 10, y + 1, { size: 8, weight: 700, align: 'center', color: '#fff', shadow: false });
   }
 
   function drawHud(lead) {
-    frameBox('hud', 1, 2, HUD_W - 3, H - 4);
+    frameBox('hud', 1, 1, HUD_W - 2, H - 2);
     const max = G.maxHp(lead);
     const midY = H / 2;
-    const x0 = 8, x1 = HUD_W - 9;
-    text(`${G.SPECIES[lead.species].name.toUpperCase()}${lead.shiny ? '*' : ''}`, x0, midY - 12, { size: 8 });
-    if (lead.status) statusBadge(lead.status, x1 - 46, midY - 12);
-    text(`:L${lead.level}`, x1, midY - 12, { size: 8, align: 'right' });
-    text('HP', x0, midY - 2, { size: 12, font: 'tx', color: C(1) });
-    bar(x0 + 13, midY - 5, x1 - x0 - 13, 6, lead.hp / max, hpColor(lead.hp / max));
-    bar(x0 + 13, midY + 2, x1 - x0 - 13, 4, lead.xp / G.xpToNext(lead.level), C(1));
+    const x0 = 8, x1 = HUD_W - 8;
+    text(`${G.SPECIES[lead.species].name}${lead.shiny ? '✦' : ''}`, x0, midY - 12, { size: 13, weight: 700 });
+    if (lead.gender) {
+      const nw = measure(`${G.SPECIES[lead.species].name}${lead.shiny ? '✦' : ''}`, 13, 700);
+      text(lead.gender === 'F' ? '♀' : '♂', x0 + nw + 3, midY - 12, { size: 14, color: lead.gender === 'F' ? '#e0578a' : '#3b7ddd' });
+    }
+    if (lead.status) statusBadge(lead.status, x1 - 52, midY - 12);
+    text(`Nv${lead.level}`, x1, midY - 12, { size: 12, weight: 700, align: 'right' });
+    hpTag(x0, midY - 5);
+    bar(x0 + 19, midY - 5, x1 - x0 - 19, 9, lead.hp / max, hpColor(lead.hp / max));
+    bar(x0 + 19, midY + 5, x1 - x0 - 19, 4, lead.xp / G.xpToNext(lead.level), '#3a9bf0');
     // moedas e cápsulas com os ícones em pixel
     const caps = (state.items.capsula || 0) + (state.items.super || 0);
-    const yRow = midY + 13;
-    if (!icon('coin', x0 - 2, yRow, 12)) A.drawSheet(ctx, A.creature('_coin'), 0, x0 - 2, yRow - 6, 12, 12);
-    text(`${state.coins}`, x0 + 12, yRow + 1, { size: 15, font: 'tx' });
-    const cw = measure(String(caps), 15, 'tx');
-    if (!icon('capsule', x1 - cw - 14, yRow, 12)) A.drawSheet(ctx, A.item('capsula'), 0, x1 - cw - 14, yRow - 6, 12, 12);
-    text(`${caps}`, x1, yRow + 1, { size: 15, font: 'tx', align: 'right' });
+    const yRow = midY + 15;
+    if (!icon('coin', x0 - 1, yRow, 11)) A.drawSheet(ctx, A.creature('_coin'), 0, x0 - 1, yRow - 6, 11, 11);
+    text(`${state.coins}`, x0 + 12, yRow, { size: 11, weight: 600 });
+    const cw = measure(String(caps), 11, 600);
+    if (!icon('capsule', x1 - cw - 13, yRow, 11)) A.drawSheet(ctx, A.item('capsula'), 0, x1 - cw - 13, yRow - 6, 11, 11);
+    text(`${caps}`, x1, yRow, { size: 11, weight: 600, align: 'right' });
   }
 
   function drawGround() {
@@ -664,7 +709,7 @@
     }
     if (bg) return;
     const zone = G.ZONES.find((z) => z.id === state.zone) || G.ZONES[0];
-    ctx.fillStyle = A.palette.gb ? C(2) : zone.color;
+    ctx.fillStyle = zone.color;
     ctx.globalAlpha = 0.9;
     const span = W - HUD_W;
     for (let i = 0; i < Math.ceil(span / 34) + 1; i++) {
@@ -683,7 +728,7 @@
     const k = sim.glow.t / 0.5;
     ctx.save();
     ctx.globalAlpha = 0.55 * (1 - k);
-    ctx.fillStyle = A.palette.gb ? C(3) : (sim.glow.color || '#fff');
+    ctx.fillStyle = sim.glow.color || '#fff';
     ctx.beginPath();
     ctx.arc(x + S / 2, y + S / 2, S * (0.45 + k * 0.35), 0, Math.PI * 2);
     ctx.fill();
@@ -704,9 +749,9 @@
     const lead = G.getLead(state);
 
     if (!state.starterChosen || !lead) {
-      frameBox('hud', 1, 2, W - 2, H - 4);
-      text('Clique aqui pra escolher seu parceiro!', W / 2, H / 2, { size: 16, font: 'tx', align: 'center' });
-      arrowDown(W - 14, H - 12);
+      frameBox('hud', 1, 1, W - 2, H - 2);
+      text('Clique aqui pra escolher seu parceiro!', W / 2, H / 2, { size: 14, weight: 700, align: 'center' });
+      arrowDown(W - 16, H - 13);
       return;
     }
 
@@ -736,19 +781,19 @@
       // derrotado: fica caído e meio apagado esperando a captura
       sprite(w.species, w.shiny, wx, y, { flip: true, alpha: (sim.defeated ? 0.5 : 1) * sim.wildAlpha * blinkAlpha('wild'), t: sim.defeated ? 0 : sim.anim });
       if (sim.defeated && sim.phase === 'down') {
-        text('clique pra capturar', wx + S / 2, y - 6, { size: 14, font: 'tx', align: 'center', color: C(3), outline: true });
+        text('clique pra capturar', wx + S / 2, y - 6, { size: 11, weight: 700, align: 'center', outline: true });
       }
       if (!sim.defeated && ['appear', 'fight', 'throw'].includes(sim.phase)) {
         const max = G.maxHp(w);
         // plaquinha do selvagem (como no topo da tela de batalha): nome, nível e HP
-        const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''}${w.shiny ? '*' : ''} :L${w.level}`;
-        const lw = Math.max(44, Math.ceil(measure(label, 13, 'tx')) + 8);
+        const label = `${G.SPECIES[w.species].name}${w.gender ? (w.gender === 'F' ? '♀' : '♂') : ''}${w.shiny ? '✦' : ''} Nv${w.level}`;
+        const lw = Math.max(52, Math.ceil(measure(label, 11, 700)) + 12);
         const lx = Math.round(Math.min(W - lw - 2, Math.max(HUD_W + 2, wx + S / 2 - lw / 2)));
-        const ly = Math.max(0, y - 17);
-        box(lx, ly, lw, 16, { inner: null });
-        text(label, lx + lw / 2, ly + 6, { size: 13, font: 'tx', align: 'center' });
-        bar(lx + 4, ly + 11, lw - 8, 3, w.hp / max, hpColor(w.hp / max));
-        if (w.status) statusBadge(w.status, lx + lw + 2, ly + 8);
+        const ly = Math.max(0, y - 19);
+        box(lx, ly, lw, 18, { r: 5 });
+        text(label, lx + lw / 2, ly + 7, { size: 11, weight: 700, align: 'center' });
+        bar(lx + 4, ly + 12, lw - 8, 4, w.hp / max, hpColor(w.hp / max));
+        if (w.status) statusBadge(w.status, lx + lw + 3, ly + 9);
       }
     }
 
@@ -769,10 +814,10 @@
     for (const f of sim.floaters) {
       ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
       // números/nomes flutuando: tom claro com contorno escuro (no Color, a cor do evento)
-      const fs = (f.size || 10) >= 12 ? 16 : 8;
-      const half = measure(f.text, fs) / 2 + 2; // não deixa o texto entrar embaixo do HUD nem sair da faixa
+      const fs = (f.size || 10) >= 12 ? 15 : 11;
+      const half = measure(f.text, fs, 700) / 2 + 2; // não deixa o texto entrar embaixo do HUD nem sair da faixa
       const fx = Math.min(W - half, Math.max(HUD_W + half, f.x));
-      text(f.text, fx, f.y - f.t * 12, { size: fs, align: 'center', color: A.palette.gb ? C(3) : f.color, outline: true });
+      text(f.text, fx, f.y - f.t * 12, { size: fs, weight: 700, align: 'center', color: f.color, outline: true });
       ctx.globalAlpha = 1;
     }
 
@@ -784,9 +829,9 @@
         `mouse ${cursor ? `${Math.round(cursor.x)},${Math.round(cursor.y)}` : '—'} ${hit || '-'} · ${clickThrough ? 'atravessa' : 'PEGA'} · dpr ${dpr}`,
         `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · botão ${debug.reader ? 'lido' : 'SEM leitor'} · clique ${debug.lastClick || '—'}`,
       ];
-      ctx.fillStyle = C(0);
+      ctx.fillStyle = 'rgba(20,22,30,0.9)';
       ctx.fillRect(HUD_W, H - 22, W - HUD_W, 22);
-      lines.forEach((l, i) => text(l, HUD_W + 4, H - 16 + i * 10, { size: 12, font: 'tx', color: C(3) }));
+      lines.forEach((l, i) => text(l, HUD_W + 4, H - 16 + i * 10, { size: 9, weight: 400, color: '#cdf5dc', shadow: false }));
     }
     // pergunta de captura (no lugar dos avisos enquanto espera resposta)
     sim.askRects = null;
@@ -797,30 +842,28 @@
       const q = sim.prompt === 'retry'
         ? `Escapou! Tentar outra? (${left}s)`
         : `Capturar ${nm}${state.dex.caught[w2.species] ? '' : ' (novo!)'}? (${left}s)`;
-      // caixa de texto com a pergunta + menu ▶SIM NÃO (o cursor segue o mouse)
-      const qw = measure(q, 15, 'tx');
-      const optW = 34, menuW = optW * 2 + 6;
-      const total = Math.ceil(qw) + 16 + menuW;
+      // caixa de mensagem com a pergunta + botões Sim / Não (afundam com o mouse em cima)
+      const qw = measure(q, 12, 600);
+      const bw = 38, bh = 15, gap = 5;
+      const total = Math.ceil(qw) + 20 + bw * 2 + gap;
       const qx = Math.round(Math.max(HUD_W + 2, Math.min(W - total - 2, (HUD_W + W) / 2 - total / 2)));
-      frameBox('toast', qx, 1, total, 17);
-      text(q, qx + 8, 10, { size: 15, font: 'tx' });
-      const yesX = qx + total - menuW - 4, noX = yesX + optW + 4;
+      frameBox('toast', qx, 1, total, 21);
+      text(q, qx + 9, 12, { size: 12 });
+      const yesX = qx + total - bw * 2 - gap - 4, noX = yesX + bw + gap;
       const over = cursor && hitTest(cursor.x, cursor.y);
-      const sel = over === 'askNo' ? 'no' : 'yes';
-      text('SIM', yesX + 10, 10, { size: 8 });
-      text('NÃO', noX + 10, 10, { size: 8 });
-      arrowRight(sel === 'yes' ? yesX + 3 : noX + 3, 10);
-      sim.askRects = { yes: [yesX, 1, optW, 17], no: [noX, 1, optW, 17] };
+      pillButton('Sim', yesX, 2, bw, bh, { primary: true, hover: over === 'askYes' });
+      pillButton('Não', noX, 2, bw, bh, { hover: over === 'askNo' });
+      sim.askRects = { yes: [yesX, 1, bw, 20], no: [noX, 1, bw, 20] };
     } else if (sim.toast) {
-      // mensagem: caixa de texto no topo com a setinha ▼ piscando
+      // mensagem: caixa de texto no topo com a setinha ▼ vermelha piscando
       const t = sim.toast;
       const a = Math.min(1, t.t / 0.15, (t.seconds - t.t) / 0.25);
       ctx.globalAlpha = Math.max(0, a);
-      const tw = Math.ceil(measure(t.text, 15, 'tx')) + 22;
+      const tw = Math.ceil(measure(t.text, 12, 600)) + 26;
       const tx = Math.round(Math.max(HUD_W + 2, Math.min(W - tw - 2, (HUD_W + W) / 2 - tw / 2)));
-      frameBox('toast', tx, 1, tw, 17);
-      text(t.text, tx + 8, 10, { size: 15, font: 'tx' });
-      arrowDown(tx + tw - 11, 8);
+      frameBox('toast', tx, 1, tw, 19);
+      text(t.text, tx + 9, 11, { size: 12 });
+      arrowDown(tx + tw - 13, 9);
       ctx.globalAlpha = 1;
     }
   }
