@@ -126,6 +126,33 @@ const raiseNative = (() => {
   }
 })();
 
+// Quando a janela em primeiro plano muda (clique em outra janela, Alt+Tab, restaurar), a barra
+// de tarefas costuma se colocar na frente da faixa. Em vez de esperar o vigia (300 ms, dá pra ver
+// piscar), o Windows avisa na hora (SetWinEventHook) e a faixa volta pro topo imediatamente.
+let winEventHook = null; // guardado pra não ser coletado
+function watchForeground() {
+  if (process.platform !== 'win32' || winEventHook) return;
+  try {
+    const koffi = require('koffi');
+    const user32 = koffi.load('user32.dll');
+    const WinEventProc = koffi.proto('void __stdcall WinEventProc(intptr hWinEventHook, uint32 event, intptr hwnd, int32 idObject, int32 idChild, uint32 idEventThread, uint32 dwmsEventTime)');
+    const SetWinEventHook = user32.func('intptr __stdcall SetWinEventHook(uint32 eventMin, uint32 eventMax, intptr hmodWinEventProc, WinEventProc *pfnWinEventProc, uint32 idProcess, uint32 idThread, uint32 dwFlags)');
+    const EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_SYSTEM_SWITCHEND = 0x0015, EVENT_SYSTEM_MINIMIZEEND = 0x0017;
+    const WINEVENT_OUTOFCONTEXT = 0x0000, WINEVENT_SKIPOWNPROCESS = 0x0002;
+    let timers = [];
+    const cb = koffi.register((_h, event) => {
+      if (event !== EVENT_SYSTEM_FOREGROUND && event !== EVENT_SYSTEM_SWITCHEND && event !== EVENT_SYSTEM_MINIMIZEEND) return;
+      reassertTop();
+      timers.forEach(clearTimeout); // a barra às vezes se coloca na frente logo depois: repete
+      timers = [60, 200].map((ms) => setTimeout(reassertTop, ms));
+    }, koffi.pointer(WinEventProc));
+    const hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, 0, cb, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    winEventHook = { hook, cb };
+  } catch (err) {
+    console.warn('Sem aviso de troca de janela (koffi):', err.message);
+  }
+}
+
 function reassertTop() {
   if (!alive(strip)) return;
   if (!strip.isVisible() || strip.isMinimized()) strip.showInactive();
@@ -182,6 +209,7 @@ function createStrip() {
   strip.on('minimize', () => { strip.restore(); reassertTop(); });
 
   setInterval(watchdog, 300); // barato: só reinsere no topo (não pisca)
+  watchForeground();
   setInterval(trackCursor, 30);
 }
 

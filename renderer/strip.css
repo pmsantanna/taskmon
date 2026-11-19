@@ -32,7 +32,7 @@ canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%
 .lv { margin-left: auto; font-size: 20px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .lv small { font-size: 13px; }
 .st { font-size: 11px; font-weight: 700; color: #fff; padding: 2px 5px; border-radius: 4px; line-height: 1; align-self: center; letter-spacing: 1px; }
-.hpnum { font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.hpnum { font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; width: 66px; flex-shrink: 0; text-align: right; } /* largura fixa: a barra não encolhe quando o número muda */
 .xpgain { font-size: 12px; font-weight: 700; color: #1d7a44; line-height: 1; }
 
 /* cena (meio): rótulo da zona e plaquinha do selvagem; os bichos são desenhados no canvas */
