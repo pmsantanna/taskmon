@@ -57,6 +57,7 @@ canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%
 #dlg.success { --ring: #b8e0c0; }
 #dlg.alert { --ring: #f0bcc4; }
 #dlg p { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#dlg.wrap #d-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 18px; } /* sem subtítulo: até 2 linhas */
 #dlg p strong { font-weight: 700; }
 #dlg p.sub { font-size: 16px; color: #505058; }
 #dlg .ask { display: flex; align-items: center; gap: 10px; }

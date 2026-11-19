@@ -176,7 +176,7 @@
 
     const D = v.dialog;
     if (D) {
-      set('dlg', 'dk', D.kind || 'info', (el, x) => { el.className = x; });
+      set('dlg', 'dk', `${D.kind || 'info'}${!D.sub && !D.ask ? ' wrap' : ''}`, (el, x) => { el.className = x; });
       set('d-title', 'dt', D.title, (el, x) => { el.innerHTML = x; });
       show('d-sub', 'dss', D.sub);
       text('d-sub', 'ds', D.sub || '');

@@ -108,7 +108,9 @@
   // ---------- Mensagens ----------
   /** Mensagem na caixa de diálogo da faixa. opts: { sub, kind: 'info'|'success'|'alert' } */
   function toast(text, seconds = 2.6, opts = {}) {
-    sim.toasts.push({ text, seconds, sub: opts.sub || '', kind: opts.kind || 'info' });
+    // texto longo fica mais tempo na tela (dá pra ler tudo)
+    const len = text.length + (opts.sub ? opts.sub.length : 0);
+    sim.toasts.push({ text, seconds: Math.max(seconds, 1.5 + len * 0.06), sub: opts.sub || '', kind: opts.kind || 'info' });
   }
 
   function floater(text, x, y, color = '#fff', life = 1.1, size = 10) {
@@ -143,7 +145,7 @@
     const summary = G.simulateOffline(state, (Date.now() - state.lastSaved) / 1000);
     if (summary) {
       const h = Math.floor(summary.seconds / 3600), m = Math.round((summary.seconds % 3600) / 60);
-      toast(`Enquanto você estava fora (${h ? h + 'h ' : ''}${m}min): +${summary.xp} XP, +${summary.coins} 🪙`, 6);
+      toast(`Enquanto você estava fora (${h ? h + 'h ' : ''}${m}min)`, 6, { sub: `+${summary.xp.toLocaleString('pt-BR')} EXP · +${summary.coins.toLocaleString('pt-BR')} moedas · ${summary.battles} batalhas` });
       summary.evolutions.forEach((e) => toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4));
       (summary.hatched || []).forEach((c) => toast(`Enquanto você estava fora, nasceu um ${name(c)}!`, 4));
     }
@@ -976,17 +978,25 @@
   let last = performance.now();
   let syncTimer = 0, saveTimer = 0;
 
-  function frame(now) {
-    const dt = Math.min((now - last) / 1000, 0.25) * SPEED;
+  // A lógica roda num timer próprio (30×/s) e o desenho no requestAnimationFrame. Se o sistema
+  // parar de desenhar a janela por um tempo, o jogo e as mensagens continuam andando.
+  function tick() {
+    const now = performance.now();
+    const real = Math.min((now - last) / 1000, 0.25);
     last = now;
+    if (!(real > 0)) return;
+    const dt = real * SPEED;
     update(dt);
-    draw();
-    if ((syncTimer += dt / SPEED) > 1) { syncTimer = 0; sync(); }
-    if ((saveTimer += dt / SPEED) > 10) { saveTimer = 0; save(); }
+    if ((syncTimer += real) > 1) { syncTimer = 0; sync(); }
+    if ((saveTimer += real) > 10) { saveTimer = 0; save(); }
+  }
+  function frame() {
+    try { draw(); } catch (err) { console.error(err); }
     requestAnimationFrame(frame);
   }
 
   window.addEventListener('beforeunload', save);
   sync();
+  setInterval(() => { try { tick(); } catch (err) { console.error(err); } }, 33);
   requestAnimationFrame(frame);
 })();

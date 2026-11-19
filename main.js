@@ -7,6 +7,13 @@ const fs = require('fs');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
+// No Windows, o Chromium para de desenhar (e congela o requestAnimationFrame) quando acha que a
+// janela está coberta. Em cima da barra de tarefas isso acontecia o tempo todo: a faixa piscava e
+// as mensagens ficavam paradas na tela. Desliga esse rastreamento de oclusão.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 const userFile = (name) => path.join(app.getPath('userData'), name);
 const SAVE_FILE = () => userFile('save.json');
 const CONFIG_FILE = () => userFile('config.json');
@@ -97,12 +104,35 @@ function placeStrip({ force = false } = {}) {
 // Clicar na barra de tarefas (ou em qualquer janela "topmost") joga ela pra cima da faixa.
 // Só chamar setAlwaysOnTop(true) de novo não adianta: o Electron acha que já está no topo
 // e não faz nada. Desligar e religar força o Windows a reinserir a janela no topo da pilha.
+// Traz a faixa pro topo SEM desligar o "sempre no topo" (desligar, mesmo por um instante, jogava
+// a faixa atrás da barra de tarefas e fazia piscar). No Windows chama SetWindowPos(HWND_TOPMOST)
+// direto, que reinsere a janela no topo da pilha mesmo ela já sendo topmost (o Electron ignoraria).
+const raiseNative = (() => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const koffi = require('koffi');
+    const user32 = koffi.load('user32.dll');
+    const SetWindowPos = user32.func('bool __stdcall SetWindowPos(intptr hWnd, intptr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags)');
+    const HWND_TOPMOST = -1;
+    const FLAGS = 0x0001 | 0x0002 | 0x0010 | 0x0200; // NOSIZE | NOMOVE | NOACTIVATE | NOOWNERZORDER
+    return (win) => {
+      const buf = win.getNativeWindowHandle();
+      const hwnd = buf.length >= 8 ? Number(buf.readBigInt64LE(0)) : buf.readInt32LE(0);
+      return SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, FLAGS);
+    };
+  } catch (err) {
+    console.warn('Sem SetWindowPos (koffi):', err.message);
+    return null;
+  }
+})();
+
 function reassertTop() {
   if (!alive(strip)) return;
-  if (stripGrabbing) { strip.moveTop(); return; } // no meio de um clique: sem desligar o topo
   if (!strip.isVisible() || strip.isMinimized()) strip.showInactive();
-  strip.setAlwaysOnTop(false);
-  strip.setAlwaysOnTop(true, 'screen-saver', 1);
+  if (raiseNative) {
+    try { raiseNative(strip); return; } catch { /* cai no caminho do Electron */ }
+  }
+  if (!strip.isAlwaysOnTop()) strip.setAlwaysOnTop(true, 'screen-saver', 1);
   strip.moveTop();
 }
 
@@ -151,7 +181,7 @@ function createStrip() {
   strip.on('hide', () => setTimeout(reassertTop, 300));
   strip.on('minimize', () => { strip.restore(); reassertTop(); });
 
-  setInterval(watchdog, 750);
+  setInterval(watchdog, 300); // barato: só reinsere no topo (não pisca)
   setInterval(trackCursor, 30);
 }
 
