@@ -704,21 +704,33 @@
   const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
   /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
   const HP_FILL = (r) => (r < 0.25 ? ['#d04a3a', '#f08a6a'] : r < 0.5 ? ['#e0a040', '#f8d070'] : ['#4cb848', '#8ae07a']);
-  /** Barra com moldura escura e brilho em cima. Espelhada, enche a partir da direita lógica (= esquerda na tela). */
-  function bar(x, y, w, h, r, [base, hi]) {
-    const fw = Math.round(w * r), fx = mirrorText ? x + w - fw : x;
-    ctx.fillStyle = '#12161a'; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = base; ctx.fillRect(fx, y, fw, h);
-    if (hi && h > 2) { ctx.fillStyle = hi; ctx.fillRect(fx, y, fw, Math.max(1, Math.floor(h / 3))); }
+  /**
+   * Barra de pixel "redonda": cada pixel é um bloco de 2×2 px do design. Linha de cima e de baixo
+   * de moldura, as linhas do meio com o preenchimento (a primeira mais clara), e os cantos vazios.
+   * Espelhada, enche a partir da direita lógica (= esquerda na tela).
+   */
+  const PX = 2;
+  function roundBar(x, y, units, rows, r, [base, hi]) {
+    const w = units * PX, iw = w - 2 * PX, ih = rows * PX;
+    ctx.fillStyle = '#0a0c0e';
+    ctx.fillRect(x + PX, y, iw, PX);                 // moldura de cima (sem os cantos)
+    ctx.fillRect(x + PX, y + PX + ih, iw, PX);       // de baixo
+    ctx.fillRect(x, y + PX, PX, ih);                 // pontas
+    ctx.fillRect(x + w - PX, y + PX, PX, ih);
+    ctx.fillStyle = '#262a30'; ctx.fillRect(x + PX, y + PX, iw, ih); // vazio
+    const fw = Math.round((iw / PX) * r) * PX;
+    if (!fw) return;
+    const fx = mirrorText ? x + PX + iw - fw : x + PX;
+    ctx.fillStyle = base; ctx.fillRect(fx, y + PX, fw, ih);
+    if (rows > 1) { ctx.fillStyle = hi; ctx.fillRect(fx, y + PX, fw, PX); }
   }
   /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
   function headBars(x, c, isLead) {
-    const W2 = 42, bx = Math.round(x + BOX / 2 - W2 / 2), by = FEET - BOX_H - 13;
+    const UNITS = 22, W2 = UNITS * PX, bx = Math.round(x + BOX / 2 - W2 / 2), by = FEET - BOX_H - 13;
     const r = G.clamp(c.hp / G.maxHp(c), 0, 1);
-    ctx.fillStyle = '#0a0c0e'; ctx.fillRect(bx, by, W2, isLead ? 12 : 8);
-    bar(bx + 1, by + 1, W2 - 2, 6, r, HP_FILL(r));
+    roundBar(bx, by, UNITS, 2, r, HP_FILL(r));                  // 4 pixels de altura
     if (!isLead) return;
-    bar(bx + 1, by + 8, W2 - 2, 3, G.clamp(c.xp / G.xpToNext(c.level), 0, 1), ['#5a8ed0', '#8ab8f0']);
+    roundBar(bx, by + 3 * PX, UNITS, 1, G.clamp(c.xp / G.xpToNext(c.level), 0, 1), ['#5a8ed0', '#8ab8f0']); // EXP colada embaixo (divide a moldura)
     const st = c.status && G.STATUS[c.status];
     const label = `NV${c.level}`;
     if (!st) { text(label, bx + W2 / 2, by - 12, { size: 8, color: '#e0a040' }); return; }
