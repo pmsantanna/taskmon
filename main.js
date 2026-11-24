@@ -33,7 +33,6 @@ const DEFAULT_CONFIG = {
 };
 
 let strip = null;
-let panel = null;
 let tray = null;
 let lastState = null;
 let config = { ...DEFAULT_CONFIG };
@@ -256,69 +255,140 @@ function trackCursor() {
   }
 }
 
-// O painel é um "DS": topo do aparelho + tela de cima (384) + dobradiça (24) + tela de baixo (384),
-// com 512 px de largura (256×192 por tela, em 2×). Se não couber na área útil, encolhe com zoom.
-const PANEL_W = 512, PANEL_H = 26 + 384 + 24 + 384;
-// espaço livre acima da faixa (ela é sempre no topo e cobriria o pé do painel)
+// ---------- Painéis (Layout B) ----------
+// Cada painel é uma janela solta de 470×660 (px do design) com moldura própria: STATUS, EQUIPE e
+// MAPA abrem juntos (o "trio", botão Painéis da faixa) e os outros (Baú, Creche, Loja, Dex, Ajustes)
+// abrem por cima. Uma barrinha em cima mostra moedas e cápsulas. Se não couber, tudo encolhe (zoom).
+const WIN_W = 470, WIN_H = 660, WIN_PAD = 8; // margem transparente pras cantoneiras e a sombra
+const TOP_H = 36;
+const TRIO = ['status', 'equipe', 'mapa'];
+const SECTION_KIND = {
+  status: 'status', equipe: 'equipe', team: 'equipe', bag: 'equipe', mapa: 'mapa', zones: 'mapa', map: 'mapa',
+  caixa: 'caixa', box: 'caixa', creche: 'creche', daycare: 'creche', loja: 'loja', shop: 'loja', tms: 'loja',
+  dex: 'dex', ajustes: 'ajustes', opts: 'ajustes', settings: 'ajustes',
+};
+const panels = new Map(); // tipo -> BrowserWindow
+let topbar = null;
+let pinned = false;       // "fixar": painéis sempre no topo
+
+// espaço livre acima da faixa (ela é sempre no topo e cobriria o pé dos painéis)
 function panelArea() {
   const wa = targetDisplay().workArea;
   const sb = alive(strip) ? strip.getBounds() : stripBounds();
   const h = sb.y - wa.y;
-  return h >= PANEL_H * 0.6 ? { ...wa, height: h } : wa;
+  return h >= (WIN_H + TOP_H) * 0.6 ? { ...wa, height: h } : wa;
 }
-function panelZoom() {
+function winZoom() {
   const a = panelArea();
-  return Math.min(1, (a.height - 16) / PANEL_H, (a.width - 16) / PANEL_W);
+  return Math.min(1, (a.width - 24) / (3 * (WIN_W + 2 * WIN_PAD)), (a.height - 16) / (WIN_H + TOP_H + 4 * WIN_PAD));
+}
+function trioOrigin() {
+  const z = winZoom(), a = panelArea();
+  const w = Math.round((WIN_W + 2 * WIN_PAD) * z), h = Math.round((WIN_H + 2 * WIN_PAD) * z);
+  const step = w - Math.round(2 * z);                 // 12 px entre as molduras (8 + 8 de margem − 4)
+  const topH = Math.round((TOP_H + 2 * WIN_PAD) * z);
+  const x0 = a.x + Math.round((a.width - (step * 2 + w)) / 2);
+  const y = a.y + Math.max(0, Math.round((a.height - h - topH) / 2)) + topH - Math.round(6 * z);
+  return { z, w, h, step, x0, y, topH };
+}
+function panelBounds(kind) {
+  const o = trioOrigin();
+  const i = TRIO.indexOf(kind);
+  if (i >= 0) return { x: o.x0 + i * o.step, y: o.y, width: o.w, height: o.h };
+  // os outros abrem por cima, em cascata a partir do meio
+  const open = [...panels.keys()].filter((k) => !TRIO.includes(k)).length;
+  const d = Math.round(28 * o.z) * (open % 4);
+  return { x: o.x0 + Math.round(o.step / 2) + d, y: o.y + d, width: o.w, height: o.h };
+}
+function topbarBounds() {
+  const o = trioOrigin();
+  return { x: o.x0 + o.step, y: o.y - o.topH + Math.round(6 * o.z), width: o.w, height: o.topH };
 }
 
-function panelBounds() {
-  const z = panelZoom();
-  const w = Math.round(PANEL_W * z), h = Math.round(PANEL_H * z);
-  const wa = panelArea();
-  const sb = alive(strip) ? strip.getBounds() : stripBounds();
-  // abre logo acima da faixa, alinhado com ela, sem sair da área útil
-  const x = Math.max(wa.x + 8, Math.min(sb.x, wa.x + wa.width - w - 8));
-  const y = Math.max(wa.y + 8, wa.y + wa.height - h - 8);
-  return { x, y, width: w, height: h };
-}
-
-let pendingSection = null;
-function showPanel(section) {
-  if (typeof section !== 'string') section = null;
-  if (alive(panel)) {
-    if (panel.isMinimized()) panel.restore();
-    panel.show();
-    panel.focus();
-    if (section) panel.webContents.send('panel:goto', section);
-    return;
-  }
-  pendingSection = section;
-  panel = new BrowserWindow({
-    ...panelBounds(),
+function makeWin(bounds, query) {
+  const w = new BrowserWindow({
+    ...bounds,
+    frame: false,
+    transparent: true,
     resizable: false,
     maximizable: false,
+    minimizable: true,
     fullscreenable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    alwaysOnTop: pinned,
     title: 'Taskmon',
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    autoHideMenuBar: true,
-    frame: false, // a moldura do "aparelho" é desenhada pelo painel
-    backgroundColor: '#34343e',
     show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-    },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
-  panel.setMenu(null);
-  panel.loadFile(path.join(__dirname, 'renderer', 'panel.html'));
-  panel.webContents.on('did-finish-load', () => {
-    panel.webContents.setZoomFactor(panelZoom());
-    if (pendingSection) panel.webContents.send('panel:goto', pendingSection);
-    pendingSection = null;
+  w.setMenu(null);
+  w.loadFile(path.join(__dirname, 'renderer', 'panel.html'), { query });
+  const z = winZoom();
+  w.webContents.on('did-finish-load', () => {
+    w.webContents.setZoomFactor(z);
+    w.webContents.send('panel:pinned', pinned);
   });
-  panel.once('ready-to-show', () => { panel.show(); panel.focus(); });
-  panel.on('closed', () => { panel = null; });
+  return w;
 }
+
+function ensureTopbar() {
+  if (alive(topbar)) { topbar.showInactive(); return; }
+  topbar = makeWin(topbarBounds(), { w: 'topbar' });
+  topbar.once('ready-to-show', () => topbar.showInactive());
+  topbar.on('closed', () => { topbar = null; });
+}
+
+/** Abre (ou traz pra frente) um painel. focus=false abre sem roubar o foco. */
+function openKind(kind, { focus = true, section = null } = {}) {
+  let w = panels.get(kind);
+  if (alive(w)) {
+    if (w.isMinimized()) w.restore();
+    if (focus) { w.show(); w.focus(); } else w.showInactive();
+    if (section) w.webContents.send('panel:goto', section);
+  } else {
+    w = makeWin(panelBounds(kind), { w: kind });
+    panels.set(kind, w);
+    w.webContents.once('did-finish-load', () => { if (section) w.webContents.send('panel:goto', section); });
+    w.once('ready-to-show', () => { if (focus) { w.show(); w.focus(); } else w.showInactive(); });
+    w.on('closed', () => {
+      panels.delete(kind);
+      if (![...panels.values()].some(alive) && alive(topbar)) topbar.close();
+    });
+  }
+  ensureTopbar();
+  return w;
+}
+
+const trioOpen = () => TRIO.some((k) => alive(panels.get(k)) && panels.get(k).isVisible());
+function openTrio(focusKind = 'equipe') {
+  for (const k of TRIO) if (k !== focusKind) openKind(k, { focus: false });
+  openKind(focusKind);
+}
+function closeAllPanels() {
+  for (const w of [...panels.values()]) if (alive(w)) w.close();
+  if (alive(topbar)) topbar.close();
+}
+
+/** Pedido de abrir painel (faixa, bandeja ou outro painel). 'panels' liga/desliga o trio. */
+function showPanel(section) {
+  if (typeof section !== 'string' || !section) return openTrio('equipe');
+  if (section === 'panels') return trioOpen() ? closeAllPanels() : openTrio('equipe');
+  if (section === 'trio') return openTrio('status');
+  const kind = SECTION_KIND[section] || 'equipe';
+  openKind(kind, { section });
+}
+
+function setPinned(on) {
+  pinned = !!on;
+  for (const w of [...panels.values(), topbar]) {
+    if (!alive(w)) continue;
+    w.setAlwaysOnTop(pinned);
+    w.webContents.send('panel:pinned', pinned);
+  }
+}
+
+const panelWindows = () => [...panels.values(), topbar].filter(alive);
 
 // ---------- Sprites customizados ----------
 function ensureUserSprites() {
@@ -356,7 +426,7 @@ function loadAssets() {
 }
 
 function broadcastAssetsChanged() {
-  for (const w of [strip, panel]) if (alive(w)) w.webContents.send('assets:changed');
+  for (const w of [strip, ...panelWindows()]) if (alive(w)) w.webContents.send('assets:changed');
 }
 
 let watchTimer = null;
@@ -382,7 +452,7 @@ function buildTrayMenu() {
   const displays = screen.getAllDisplays();
   const current = targetDisplay().id;
   return Menu.buildFromTemplate([
-    { label: 'Abrir painel', click: showPanel },
+    { label: 'Abrir painéis', click: () => showPanel() },
     { type: 'separator' },
     { label: '← Mover para a esquerda', click: () => moveBy(-60) },
     { label: '→ Mover para a direita', click: () => moveBy(60) },
@@ -437,7 +507,7 @@ function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(icon);
   tray.setToolTip('Taskmon');
-  tray.on('click', showPanel);
+  tray.on('click', () => showPanel());
   // Monta o menu na hora de abrir, pra refletir monitores/config atuais.
   tray.on('right-click', () => tray.popUpContextMenu(buildTrayMenu()));
 }
@@ -453,14 +523,21 @@ ipcMain.on('strip:clickthrough', (_e, ignore) => {
   stripGrabbing = !ignore;
 });
 ipcMain.on('panel:open', (_e, section) => showPanel(section));
-ipcMain.on('panel:win', (_e, action) => {
-  if (!alive(panel)) return;
-  if (action === 'min') panel.minimize();
-  if (action === 'close') panel.close();
+ipcMain.on('panel:win', (e, action) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (action === 'closeAll') return closeAllPanels();
+  if (action === 'pin') return setPinned(!pinned);
+  if (!alive(w)) return;
+  if (action === 'min') w.minimize();
+  if (action === 'close') w.close();
+});
+// bicho escolhido num painel (EQUIPE, Baú) aparece nos outros (STATUS)
+ipcMain.on('ui:select', (_e, uid) => {
+  for (const w of panelWindows()) w.webContents.send('ui:select', uid);
 });
 ipcMain.on('state:push', (_e, s) => {
   lastState = s;
-  if (alive(panel)) panel.webContents.send('state', s);
+  for (const w of panelWindows()) w.webContents.send('state', s);
 });
 ipcMain.on('state:request', (e) => {
   if (lastState) e.sender.send('state', lastState);
@@ -488,5 +565,5 @@ app.whenReady().then(() => {
   powerMonitor.on('unlock-screen', relayout);
 });
 
-app.on('second-instance', showPanel);
+app.on('second-instance', () => showPanel());
 app.on('window-all-closed', (e) => e.preventDefault()); // continua vivo na bandeja

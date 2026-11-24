@@ -55,7 +55,7 @@
         </div>
         <div id="tools">
           <div class="tool" data-hit="collapse" title="Recolher">${ICON.down}</div>
-          <div class="tool" data-hit="menu:team" title="Painéis">${ICON.grid}</div>
+          <div class="tool" data-hit="menu:panels" title="Painéis">${ICON.grid}</div>
           <div class="tool" data-hit="menu:bag" title="Mochila">${ICON.bag}</div>
         </div>
         <section id="card">

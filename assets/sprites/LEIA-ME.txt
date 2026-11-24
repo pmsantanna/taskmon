@@ -38,13 +38,7 @@ tiles\default_ground.png / default_bg.png
 
   Zonas: campina, lago, caverna, vulcao
 
-ui\card.png                     Moldura 9-slice dos cartões do painel.
-ui\button.png                   Moldura 9-slice dos botões do painel.
-ui\background.png               Textura que repete no fundo do painel.
-ui\coin.png, ui\capsule.png     Ícones de moeda e cápsula (HUD e topo do painel).
-
-9-slice: a imagem é cortada numa grade 3x3. Os cantos ficam fixos, as bordas
-esticam e o miolo preenche. O corte padrão é 1/3 do menor lado.
+ui\capsule.png                  Ícone de cápsula (faixa e painéis).
 
 Ajustes opcionais: sprites.json
 -------------------------------
@@ -53,8 +47,7 @@ Um JSON nesta pasta, com o caminho do arquivo como chave:
 {
   "creatures/pavio.png":      { "frames": 4, "fps": 8, "size": 1.2, "shinyHue": 150 },
   "tiles/campina_ground.png": { "scale": 2, "speed": 1, "feet": 4 },
-  "tiles/campina_bg.png":     { "scale": 1, "speed": 0.3, "offsetY": 0 },
-  "ui/card.png":              { "slice": [4, 4, 4, 4], "scale": 2, "repeat": "round" }
+  "tiles/campina_bg.png":     { "scale": 1, "speed": 0.3, "offsetY": 0 }
 }
 
   frames    quantidade de quadros (se não der pra detectar sozinho)

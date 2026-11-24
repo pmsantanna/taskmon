@@ -4,20 +4,14 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'" />
   <title>Taskmon</title>
-  <link rel="stylesheet" href="ds.css" />
+  <link rel="stylesheet" href="win.css" />
 </head>
 <body>
-  <div id="device">
-    <div class="bezel">
-      <span class="led" aria-hidden="true"></span>
-      <span class="title">TASKMON<small>duas telas</small></span>
-      <button data-win="min" title="Minimizar" aria-label="Minimizar">_</button>
-      <button class="close" data-win="close" title="Fechar" aria-label="Fechar">X</button>
-    </div>
-    <section id="top" class="screen" aria-label="Tela de cima"></section>
-    <div class="hinge" aria-hidden="true"><i></i><i></i></div>
-    <section id="bottom" class="screen" aria-label="Tela de baixo"><p class="muted">Conectando com a barra de tarefas…</p></section>
-  </div>
+  <section class="win" id="win" aria-live="polite">
+    <span class="cb tl" aria-hidden="true"></span><span class="cb tr" aria-hidden="true"></span><span class="cb bl" aria-hidden="true"></span><span class="cb br" aria-hidden="true"></span>
+    <div class="hdr" id="hdr"></div>
+    <div id="body"><p class="muted">Conectando com a faixa…</p></div>
+  </section>
   <dialog id="modal"></dialog>
   <script src="../shared/bridge-fallback.js"></script>
   <script src="../shared/moves.js"></script>

@@ -895,7 +895,7 @@
     if (now - lastAction < 400) return;
     lastAction = now;
     const st = state.settings;
-    if (hit === 'hud' || hit === 'lead') bridge.openPanel(state.starterChosen ? 'team' : undefined);
+    if (hit === 'hud' || hit === 'lead') bridge.openPanel(state.starterChosen ? 'trio' : undefined);
     if (hit.startsWith('menu:')) bridge.openPanel(hit.slice(5));
     if (hit === 'collapse' || hit === 'expand') st.collapsed = hit === 'collapse';
     if (hit === 'card:close' || hit === 'card:open') st.cardClosed = hit === 'card:close';

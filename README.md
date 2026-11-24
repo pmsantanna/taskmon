@@ -38,7 +38,8 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 
 ## Como jogar
 
-- **Clique na ficha do líder ou no seu bicho** pra abrir o painel (equipe, caixa, zonas, loja e bestiário).
+- **Painéis** (botão da faixa): abre STATUS, EQUIPE e MAPA lado a lado; clique de novo pra fechar.
+  Clicar na ficha do líder ou no seu bicho também abre. **Mochila** abre a EQUIPE.
 - **Clique no selvagem** durante a luta pra lançar uma cápsula. Quanto menos HP ele tiver, maior a chance.
 - **Captura** acontece **depois de derrotar** o selvagem (ele fica caído uns segundos). Modos (⚙ Ajustes):
   *espécies novas e brilhantes* (padrão) e *capturar todos* lançam sozinhos e tentam até 3 vezes;
@@ -47,17 +48,17 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   Se ele **escapar da cápsula**, pode fugir de vez (10%, lendário 25%) ou aparece "Tentar outra?".
   Clicar no selvagem no meio da luta ainda arrisca uma cápsula antes (chance menor com HP alto).
   Dá pra ligar a compra automática de cápsulas.
-- **Soltar** (aba Caixa): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
-  selecione (clicando nos cartões ou "Selecionar filtrados") e solte. Trancados 🔒 nunca saem. Como no
+- **Soltar** (Baú): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
+  ligue **MARCAR** e clique nos bichos (ou "Marcar filtro") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
   (100/125/150%), monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
-- **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. Na aba Equipe, o botão **Golpes**
-  troca os ativos; clique em qualquer golpe pra abrir os detalhes.
-- **Creche e ovos**: deixe um casal na aba **Creche**; os ovos chocam sozinhos com o tempo.
-- **Ajustes**: engrenagem ⚙ no topo do painel.
-- **MTs**: aba própria no painel. Compre na loja ou ache as exclusivas em batalha e ensine pra quem for compatível.
+- **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. No STATUS, **TROCAR** escolhe os
+  ativos; clique num golpe pra ver a descrição e clique de novo pra abrir os detalhes.
+- **Creche e ovos**: deixe um casal na **Creche** (ovo na EQUIPE); os ovos chocam sozinhos com o tempo.
+- **Ajustes**: engrenagem no topo da EQUIPE.
+- **MTs**: aba MTs da Loja. Compre ou ache as exclusivas em batalha e ensine pra quem for compatível.
 - Brilhantes: 1 em 256. Lendário escondido no Vulcão. 👀
 
 ## Batalha
@@ -147,14 +148,19 @@ Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout
     Embaixo, as cápsulas e o **AUTO**. A setinha recolhe o card numa coluna.
   - **Recolher** deixa só uma barrinha com o líder e o que está acontecendo; ela reabre sozinha quando
     precisa da sua resposta.
-- **Painel** = um aparelho de duas telas (512×384 cada, encolhe se não couber na tela): em cima a batalha
-  ou a exploração, embaixo as seções com abas — Equipe/Caixa/Creche, Loja/MTs, Dex (lista e registro com
-  Registro/Área/Tamanho) e Zonas/Ajustes. Tocar num bicho abre o **resumo** (Info, Status, Golpes).
-  Quando a faixa pergunta "Capturar?", a tela de baixo vira **Escolha uma ação**.
+- **Painéis** = janelas soltas de 470×660 (arraste pelo título; encolhem se não couberem acima da faixa):
+  - **STATUS**: folha com NV, EXP e atributos (a lupa mostra genes: IV, esforço e natureza, com o botão
+    de usar itens de esforço), os 4 golpes, a descrição do escolhido e o que aprende em breve.
+  - **EQUIPE**: vitrine do bicho escolhido (natureza, genes, item segurado, líder/Baú), os 6 da equipe,
+    a mochila (Itens, Segurar, MTs; em lista ou grade) e atalhos pra Baú, Creche, Golpes, Dex, Mapa e Loja.
+  - **MAPA**: as zonas num mapa, com dificuldade, nível, bichos da área e **VIAJAR**.
+  - **Baú**, **Creche**, **Loja**, **Dex** e **Ajustes** abrem no mesmo estilo, por cima.
+  - Barra de cima: moedas, cápsulas, fixar janelas no topo, som, Dex, Loja e fechar painéis.
+  - O bicho escolhido na EQUIPE (ou no Baú) aparece no STATUS.
 - Fontes Pixelify Sans (texto) e Silkscreen (rótulos e números), OFL, em `assets/fonts/` (funcionam offline).
   Texturas da faixa em `assets/b/`. O topo do painel é desenhado pelo app
   (arraste por ele; _ minimiza, X fecha).
-- Arquivos: `renderer/strip-ui.js` + `strip.css` (faixa), `renderer/panel.js` + `ds.css` (painel),
+- Arquivos: `renderer/strip-ui.js` + `strip.css` (faixa), `renderer/panel.js` + `win.css` (painéis),
   fichas da Dex em `shared/dex.js`.
 
 ## Sprites e tiles customizados
@@ -169,7 +175,6 @@ Coloque PNGs em `%APPDATA%\taskmon\sprites\` (bandeja → **Abrir pasta de sprit
 | `items/capsula.png`, `items/super.png` | Cápsulas |
 | `tiles/<zona>_ground.png` | Chão da faixa (64 px de altura), repete sem fim e rola enquanto a equipe anda |
 | `tiles/<zona>_bg.png` | Faixa de fundo atrás do chão (40 px), rola na metade da velocidade. `default_ground/bg.png` valem pra todas as zonas |
-| `ui/card.png`, `ui/button.png`, `ui/background.png` | Molduras 9-slice e textura do painel |
 | `ui/coin.png`, `ui/capsule.png` | Ícones |
 
 Ajustes por arquivo (quadros, fps, escala, corte do 9-slice, velocidade) vão num `sprites.json`.
@@ -188,11 +193,11 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 | `shared/sprites.js` | **Pixel art** 12×12 de cada criatura, com paleta normal e brilhante |
 | `shared/assets.js` | Sprites/tiles em PNG: folhas animadas, tiles infinitos, molduras 9-slice |
 | `renderer/strip.js` | A faixa: loop do jogo, animações, cliques. É a dona do estado |
-| `renderer/panel.js` | O painel: só mostra o estado e manda comandos |
+| `renderer/panel.js` | Os painéis (uma janela por tipo): só mostram o estado e mandam comandos |
 | `shared/bridge-fallback.js` | Permite abrir os HTML direto no navegador pra mexer no visual |
-| `renderer/*.html` | Casca das duas janelas (faixa e painel) |
+| `renderer/*.html` | Casca das janelas (faixa e painéis) |
 | `renderer/strip-ui.js`, `renderer/strip.css` | Ficha, cards, balões e botões da faixa (HTML por cima do canvas) |
-| `renderer/ds.css`, `renderer/fonts.css` | Visual do painel em duas telas e a fonte de pixel |
+| `renderer/win.css`, `renderer/fonts.css` | Kit visual dos painéis (Layout B) e as fontes de pixel |
 | `shared/dex.js` | Fichas da Dex: categoria, altura, peso, habitat, descrição |
 | `assets/icon.png` | Ícone do app e da bandeja (256×256) |
 | `assets/sprites/` | Sprites que vão junto no build + `LEIA-ME.txt` + `_exemplos/` |

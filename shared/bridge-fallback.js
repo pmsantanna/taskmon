@@ -8,6 +8,7 @@
   const listeners = { state: [], cmd: [], stateRequest: [], assets: [] };
   ch.onmessage = (e) => {
     const { kind, payload } = e.data;
+    if (kind === 'closeAll' && /panel\.html/.test(location.pathname)) window.close();
     (listeners[kind] || []).forEach((cb) => cb(payload));
   };
 
@@ -42,11 +43,20 @@
     load: async () => JSON.parse(localStorage.getItem('taskmon-save') || 'null'),
     save: (data) => localStorage.setItem('taskmon-save', JSON.stringify(data)),
     setClickThrough: () => {},
-    windowControl: (action) => { if (action === 'close') window.close(); },
-    openPanel: (section) => {
-      const w = window.open(`panel.html${section ? `#${section}` : ''}`, 'taskmon-panel', 'width=512,height=818');
-      if (w && section) ch.postMessage({ kind: 'goto', payload: section });
+    windowControl: (action) => {
+      if (action === 'close') window.close();
+      if (action === 'closeAll') ch.postMessage({ kind: 'closeAll' });
     },
+    // cada painel numa janelinha do navegador (popup), como no Electron
+    openPanel: (section) => {
+      const KIND = { team: 'equipe', bag: 'equipe', zones: 'mapa', map: 'mapa', box: 'caixa', daycare: 'creche', shop: 'loja', tms: 'loja', opts: 'ajustes', settings: 'ajustes' };
+      const kinds = !section || section === 'panels' || section === 'trio' ? ['status', 'equipe', 'mapa'] : [KIND[section] || section];
+      kinds.forEach((k, i) => window.open(`panel.html?w=${k}`, `taskmon-${k}`, `width=486,height=676,left=${40 + i * 490},top=40`));
+      if (section) ch.postMessage({ kind: 'goto', payload: section });
+    },
+    onPinned: () => {},
+    selectCreature: (uid) => { ch.postMessage({ kind: 'select', payload: uid }); (listeners.select || []).forEach((cb) => cb(uid)); },
+    onSelect: (cb) => { (listeners.select = listeners.select || []).push(cb); },
     onGoto: (cb) => {
       listeners.goto = listeners.goto || [];
       listeners.goto.push(cb);
