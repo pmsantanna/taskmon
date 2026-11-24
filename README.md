@@ -1,6 +1,6 @@
 # Taskmon
 
-Joguinho idle de criaturas que mora na barra de tarefas do Windows. Seu parceiro anda,
+Joguinho idle de criaturas que mora logo acima da barra de tarefas do Windows. Sua equipe anda,
 encontra criaturas selvagens, batalha sozinho, ganha XP, evolui e captura bichos novos
 enquanto você trabalha.
 
@@ -13,9 +13,9 @@ npm install
 npm start
 ```
 
-O `koffi` (dependência) lê o botão do mouse direto do Windows: em cima da barra de tarefas o
-clique vai pra barra, então é assim que a faixa sabe que foi clicada. Ele já vem compilado no
-pacote do npm, sem baixar nada do GitHub. Se faltar, a faixa só responde no modo "acima da barra".
+O `koffi` (dependência) fala direto com o Windows: mantém a faixa no topo sem piscar e lê o botão
+do mouse como reforço do clique. Ele já vem compilado no pacote do npm, sem baixar nada do GitHub.
+Se faltar, a faixa funciona igual, só sem esses reforços.
 
 ### Atrás do proxy da empresa
 
@@ -38,19 +38,20 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 
 ## Como jogar
 
-- **Clique no HUD ou no seu bicho** pra abrir o painel (equipe, caixa, zonas, loja e bestiário).
+- **Clique na ficha do líder ou no seu bicho** pra abrir o painel (equipe, caixa, zonas, loja e bestiário).
 - **Clique no selvagem** durante a luta pra lançar uma cápsula. Quanto menos HP ele tiver, maior a chance.
 - **Captura** acontece **depois de derrotar** o selvagem (ele fica caído uns segundos). Modos (⚙ Ajustes):
   *espécies novas e brilhantes* (padrão) e *capturar todos* lançam sozinhos e tentam até 3 vezes;
-  *perguntar* mostra "Capturar X?" na faixa e no painel; *só manual* espera você clicar no caído.
+  *perguntar* mostra "Capturar?" num balão na faixa e no painel; *só manual* espera você clicar no caído.
+  O botão **AUTO** do card da direita liga/desliga a captura automática (desligado = perguntar).
   Se ele **escapar da cápsula**, pode fugir de vez (10%, lendário 25%) ou aparece "Tentar outra?".
   Clicar no selvagem no meio da luta ainda arrisca uma cápsula antes (chance menor com HP alto).
   Dá pra ligar a compra automática de cápsulas.
 - **Soltar** (aba Caixa): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
   selecione (clicando nos cartões ou "Selecionar filtrados") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
-- **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, monitor,
-  ficar acima da barra, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
+- **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
+  (100/125/150%), monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
 - **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. Na aba Equipe, o botão **Golpes**
   troca os ativos; clique em qualquer golpe pra abrir os detalhes.
@@ -132,17 +133,26 @@ Naturezas e itens ficam em `shared/items.js`.
 
 ## Visual
 
-Interface estilo DS feita a partir do design do Claude Design ("Taskmon · interface retrô").
+Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout B).
 
-- **Faixa** (600 px por padrão): placa do líder com retrato, HP e EXP, a cena com o bicho passeando,
-  a bolsa (moedas e cápsulas) e 4 botões — **Equipe**, **Mochila**, **Dex** e **Opções** — que abrem o
-  painel na seção certa. No encontro aparece a plaquinha do selvagem com um "!"; derrotado, a caixa de
-  diálogo pergunta "Capturar?" com um timer e os botões **CAPTURAR** / **DEIXAR IR**.
+- **Faixa B2**: um overlay transparente de 800×200 logo acima da barra de tarefas (escala 1:1 com o
+  design; largura e tamanho na bandeja). Só aparecem a ficha do líder (retrato, NV, HP, EXP), o chão
+  de terra com arbustos rolando, a **equipe inteira andando em fila**, os botões **Recolher**, **Painéis**
+  e **Mochila** e o card da direita; fora deles o clique passa pra área de trabalho.
+  - Balões em cima dos bichos: "!" no encontro, o nome do golpe, "· · ·" na cápsula, PEGOU!, +EXP,
+    ESCAPOU!, FUGIU!. Na luta aparece a etiqueta de HP do selvagem e os números de dano.
+  - Derrotado, o balão **Capturar? SIM / NÃO** com o tempo pra decidir.
+  - Card da direita (clique nele pra trocar): **Na área** (bichos da zona, vistos e capturados),
+    **Ovo** (passos que faltam pro ovo da creche chocar) e **Hoje** (capturas, EXP e itens do dia).
+    Embaixo, as cápsulas e o **AUTO**. A setinha recolhe o card numa coluna.
+  - **Recolher** deixa só uma barrinha com o líder e o que está acontecendo; ela reabre sozinha quando
+    precisa da sua resposta.
 - **Painel** = um aparelho de duas telas (512×384 cada, encolhe se não couber na tela): em cima a batalha
   ou a exploração, embaixo as seções com abas — Equipe/Caixa/Creche, Loja/MTs, Dex (lista e registro com
   Registro/Área/Tamanho) e Zonas/Ajustes. Tocar num bicho abre o **resumo** (Info, Status, Golpes).
   Quando a faixa pergunta "Capturar?", a tela de baixo vira **Escolha uma ação**.
-- Fonte Pixelify Sans (OFL, em `assets/fonts/`, funciona offline). O topo do painel é desenhado pelo app
+- Fontes Pixelify Sans (texto) e Silkscreen (rótulos e números), OFL, em `assets/fonts/` (funcionam offline).
+  Texturas da faixa em `assets/b/`. O topo do painel é desenhado pelo app
   (arraste por ele; _ minimiza, X fecha).
 - Arquivos: `renderer/strip-ui.js` + `strip.css` (faixa), `renderer/panel.js` + `ds.css` (painel),
   fichas da Dex em `shared/dex.js`.
@@ -157,9 +167,8 @@ Coloque PNGs em `%APPDATA%\taskmon\sprites\` (bandeja → **Abrir pasta de sprit
 | `creatures/<especie>.png` | Criatura olhando pra direita. Animação = quadros lado a lado (ex.: 4×32px = 128×32) |
 | `creatures/<especie>_shiny.png` | Brilhante (opcional, senão a cor é girada) |
 | `items/capsula.png`, `items/super.png` | Cápsulas |
-| `tiles/<zona>_ground.png` | Chão que repete sem fim e rola enquanto o bicho anda |
-| `tiles/<zona>_bg.png` | Fundo com parallax. `default_ground/bg.png` valem pra todas as zonas |
-| `ui/hud.png`, `ui/toast.png` | Molduras 9-slice da faixa |
+| `tiles/<zona>_ground.png` | Chão da faixa (64 px de altura), repete sem fim e rola enquanto a equipe anda |
+| `tiles/<zona>_bg.png` | Faixa de fundo atrás do chão (40 px), rola na metade da velocidade. `default_ground/bg.png` valem pra todas as zonas |
 | `ui/card.png`, `ui/button.png`, `ui/background.png` | Molduras 9-slice e textura do painel |
 | `ui/coin.png`, `ui/capsule.png` | Ícones |
 
@@ -171,7 +180,7 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 
 | Arquivo | O que faz |
 |---|---|
-| `main.js` | Processo principal: janela transparente sobre a taskbar, bandeja, save em disco |
+| `main.js` | Processo principal: janela transparente acima da taskbar, bandeja, save em disco |
 | `preload.js` | Ponte segura (`window.bridge`) entre as páginas e o main |
 | `shared/game.js` | **Regras**: espécies, tipos, zonas, batalha, XP, captura, offline. Sem DOM, roda no Node |
 | `shared/moves.js` | **Golpes** (físico, mágico, status) e o que cada espécie aprende por nível |
@@ -182,14 +191,14 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 | `renderer/panel.js` | O painel: só mostra o estado e manda comandos |
 | `shared/bridge-fallback.js` | Permite abrir os HTML direto no navegador pra mexer no visual |
 | `renderer/*.html` | Casca das duas janelas (faixa e painel) |
-| `renderer/strip-ui.js`, `renderer/strip.css` | Placas, diálogo e botões da faixa (HTML por cima do canvas) |
+| `renderer/strip-ui.js`, `renderer/strip.css` | Ficha, cards, balões e botões da faixa (HTML por cima do canvas) |
 | `renderer/ds.css`, `renderer/fonts.css` | Visual do painel em duas telas e a fonte de pixel |
 | `shared/dex.js` | Fichas da Dex: categoria, altura, peso, habitat, descrição |
 | `assets/icon.png` | Ícone do app e da bandeja (256×256) |
 | `assets/sprites/` | Sprites que vão junto no build + `LEIA-ME.txt` + `_exemplos/` |
 
-O save fica em `%APPDATA%\taskmon\save.json` e as preferências da faixa (largura, posição,
-modo) em `%APPDATA%\taskmon\config.json`. Apague os dois pra começar do zero.
+O save fica em `%APPDATA%\taskmon\save.json` e as preferências da faixa (largura, tamanho,
+posição, monitor) em `%APPDATA%\taskmon\config.json`. Apague os dois pra começar do zero.
 
 `node_modules/` e `dist/` ficam fora do git (veja o `.gitignore`).
 

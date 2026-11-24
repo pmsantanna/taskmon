@@ -28,17 +28,16 @@ items\capsula.png, items\super.png
                                 Cápsulas (super usa capsula.png se não existir).
 
 tiles\<zona>_ground.png         Chão que repete SEM FIM na horizontal e rola enquanto
-                                o bicho anda. A borda esquerda tem que emendar com a
-                                direita. Fica colado na base da faixa.
-tiles\<zona>_bg.png             Fundo atrás das criaturas, com parallax (rola mais devagar).
-                                Esticado pra altura da faixa.
+                                a equipe anda. A borda esquerda tem que emendar com a
+                                direita. Fica colado na base da faixa, com 64 px de
+                                altura (ou use "scale").
+tiles\<zona>_bg.png             Faixa atrás das criaturas (arbustos, morros), com
+                                parallax (rola na metade da velocidade). 40 px de altura.
 tiles\default_ground.png / default_bg.png
                                 Usados nas zonas que não têm tile próprio.
 
   Zonas: campina, lago, caverna, vulcao
 
-ui\hud.png                      Moldura 9-slice do HUD da faixa (nome/HP/moedas).
-ui\toast.png                    Moldura 9-slice dos avisos na faixa.
 ui\card.png                     Moldura 9-slice dos cartões do painel.
 ui\button.png                   Moldura 9-slice dos botões do painel.
 ui\background.png               Textura que repete no fundo do painel.
@@ -55,7 +54,6 @@ Um JSON nesta pasta, com o caminho do arquivo como chave:
   "creatures/pavio.png":      { "frames": 4, "fps": 8, "size": 1.2, "shinyHue": 150 },
   "tiles/campina_ground.png": { "scale": 2, "speed": 1, "feet": 4 },
   "tiles/campina_bg.png":     { "scale": 1, "speed": 0.3, "offsetY": 0 },
-  "ui/hud.png":               { "slice": 4, "scale": 2 },
   "ui/card.png":              { "slice": [4, 4, 4, 4], "scale": 2, "repeat": "round" }
 }
 

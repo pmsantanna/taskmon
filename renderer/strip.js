@@ -1,4 +1,4 @@
-// A faixa que fica em cima da barra de tarefas: loop do jogo, animações e cliques.
+// A faixa (Layout B2), logo acima da barra de tarefas: loop do jogo, animações e cliques.
 // Este arquivo é o "dono" do estado do jogo; o painel só manda comandos e recebe cópias.
 
 (async () => {
@@ -14,10 +14,14 @@
   const ctx = canvas.getContext('2d');
 
   // ---------- Layout ----------
-  // A faixa segue o design do Claude Design (strip-ui.js desenha as placas em HTML por cima);
-  // aqui ficam só as medidas da cena onde os bichos andam, em px da janela.
-  let W = 0, H = 0, S = 24, groundY = 0, leadX = 0, wildTargetX = 0;
-  let sceneL = 0, sceneR = 0, k = 0.5; // k = px de tela por px do design 2× (altura/104)
+  // Faixa B2: tudo em px do design (800×200), ampliado por k = altura da janela / 200.
+  // O "campo" (chão + bichos) começa em x=196 (depois da ficha do líder) e vai até o card da direita.
+  const FX = 196;          // início do campo
+  const FEET = 148;        // linha dos pés (bottom: 52 no design)
+  const BOX = 64;          // caixa de cada bicho (64×48, sprite 12×12 em 4×)
+  const BOX_H = 48;
+  const GAP = 52;          // distância entre os bichos da fila
+  let W = 0, H = 0, k = 1, DW = 800, fieldW = 456, leadX = 250, wildTargetX = 360;
   let dpr = 1;
 
   // Tamanho do canvas em pixels físicos. Chamado no resize, quando o DPI muda (o evento
@@ -28,7 +32,6 @@
     H = window.innerHeight;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
   }
 
@@ -45,33 +48,18 @@
   watchDpr();
   resize();
 
-  // Posições da cena (recalculadas todo quadro; o retângulo vem da camada HTML).
-  let ground = null, groundScale = 1, bg = null, bgScale = 1;
+  // texturas do design (chão e arbustos); tiles da pasta de sprites têm prioridade
+  const img = (src) => { const i = new Image(); i.src = src; return i; };
+  const TEX = { chao: img('../assets/b/chao.png'), arbustos: img('../assets/b/arbustos.png') };
+
+  const FIGHTING = ['fight', 'down', 'prompt', 'retry', 'throw', 'shake'];
   function layout() {
-    k = H / 104;
-    ground = A.tile(state.zone, 'ground');
-    bg = A.tile(state.zone, 'bg');
-    if (ground) groundScale = ground.cfg.scale || Math.max(1, Math.round((H * 0.28) / ground.img.height));
-    if (bg) bgScale = bg.cfg.scale || H / bg.img.height;
-    const r = window.StripUI && StripUI.sceneRect();
-    sceneL = r ? r.left : W * 0.3;
-    sceneR = r ? r.right : W * 0.7;
-    S = Math.round(42 * k);                  // bicho: 42 px de altura no design
-    groundY = Math.round(H - 7 * k);         // pés: 2 px do chão + 5 px de folga da plataforma
-    const walkSpan = Math.max(0, sceneR - sceneL - S - 36 * k);
-    if (sim && sim.phase === 'walk' && walkSpan > 0) {
-      // passeia de um lado pro outro (o "stroll" do design), virando no fim
-      const period = 12, t = (sim.walkT || 0) % period;
-      const kx = t < period / 2 ? t / (period / 2) : 2 - t / (period / 2);
-      leadX = Math.round(sceneL + 18 * k + walkSpan * kx);
-      sim.walkFlip = t >= period / 2;
-    } else {
-      leadX = Math.round(sceneL + 18 * k);
-      if (sim) sim.walkFlip = false;
-    }
-    wildTargetX = Math.round(sceneR - 14 * k - S);
-    // a cena muda de largura (o diálogo da pergunta ocupa espaço): o selvagem acompanha
-    if (sim && sim.wild && sim.phase !== 'appear') sim.wildX = wildTargetX;
+    k = H / 200 || 1;
+    DW = W / k;
+    fieldW = Math.max(160, Math.round(DW - FX - (state.settings.cardClosed ? 48 : 148)));
+    leadX = Math.round(fieldW * 0.548);          // 250 num campo de 456
+    wildTargetX = Math.min(fieldW - BOX + 6, leadX + 110);
+    if (sim && sim.wild && FIGHTING.includes(sim.phase)) sim.wildX = wildTargetX;
   }
 
   // ---------- Estado ----------
@@ -88,7 +76,7 @@
   // fontes de pixel antes do primeiro desenho (sem travar se demorarem)
   let sim = null; // definido logo abaixo; layout() checa
   await Promise.race([
-    Promise.all([500, 600, 700].map((w) => document.fonts.load(`${w} 16px "Pixelify Sans"`))).catch(() => {}),
+    Promise.all([...[500, 600, 700].map((w) => document.fonts.load(`${w} 16px "Pixelify Sans"`)), document.fonts.load('14px Silkscreen')]).catch(() => {}),
     new Promise((r) => setTimeout(r, 1500)),
   ]);
   layout();
@@ -98,7 +86,7 @@
     wild: null, wildX: 0, wildAlpha: 1,
     turnT: 0, queue: [], bl: null, bw: null, log: [], ppT: 0, defeated: false, catchTries: 0, prompt: null,
     walkT: 0, walkFlip: false, lastReward: null, xpGain: 0, xpGainT: 0, alertT: 0, sparkT: 0,
-    lunge: null, floaters: [], capsule: null,
+    lunge: null, floaters: [], bubbles: {}, capsule: null, fled: false,
     toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
 
@@ -113,8 +101,16 @@
     sim.toasts.push({ text, seconds: Math.max(seconds, 1.5 + len * 0.06), sub: opts.sub || '', kind: opts.kind || 'info' });
   }
 
-  function floater(text, x, y, color = '#fff', life = 1.1, size = 10) {
+  /** Número/texto subindo na cena (px do campo). size 14 = dano; 11 = textinho. */
+  function floater(text, x, y, color = '#f2ecd8', life = 0.9, size = 14) {
     sim.floaters.push({ text, x, y, t: 0, color, life, size });
+  }
+
+  // Balões do design: um por dono ('lead', 'wild', 'cap'); o novo substitui o anterior.
+  // y = topo do balão em px do campo.
+  const BUBBLE_Y = { lead: 66, wild: 72, cap: 92 };
+  function bubble(who, text, { accent = '#6a6f66', color = '#f2ecd8', life = 1.2, y } = {}) {
+    sim.bubbles[who] = { text, accent, color, life, t: 0, y };
   }
 
   // Registro da batalha (aparece no painel) e textos de evento.
@@ -157,15 +153,17 @@
   // ---------- Batalha ----------
   function startEncounter() {
     sim.wild = G.rollWild(state);
-    sim.wildX = W + 4;
+    sim.wildX = fieldW + 10;
     sim.wildAlpha = 1;
+    sim.fled = false;
     sim.defeated = false;
     sim.catchTries = 0;
     sim.prompt = null;
     sim.queue = [];
     sim.log = [`Um ${name(sim.wild)} selvagem nv ${sim.wild.level} apareceu!`];
     setPhase('appear');
-    sim.alertT = 1.6; // "!" em cima do selvagem
+    sim.alertT = 1.6;
+    bubble('wild', '!', { accent: '#c0402e', color: '#e06a52', life: 1.6 }); // "!" em cima do selvagem
     if (sim.wild.shiny) toast(`Um ${name(sim.wild)} brilhante apareceu!`, 4, { kind: 'alert' });
     sync();
   }
@@ -182,14 +180,18 @@
     sim.bl = sim.bw = null;
     sim.wild = null;
     sim.capsule = null;
+    delete sim.bubbles.cap;
     setPhase('walk');
     sim.encounterAt = nextEncounter();
   }
 
   // ---------- Turnos (estilo original) ----------
-  const posOf = (who) => (who === 'lead' ? leadX + S / 2 : sim.wildX + S / 2);
+  const posOf = (who) => (who === 'lead' ? leadX + BOX / 2 : sim.wildX + BOX / 2);
   const nameSide = (who) => (who === 'lead' ? name(G.getLead(state)) : `${name(sim.wild)} selvagem`);
   const STAT_SHORT = { atk: 'Atq', def: 'Def', mag: 'Mag', res: 'Res', spd: 'Vel', acc: 'Prec', eva: 'Eva' };
+  // cores de tipo do Layout B (faixa no topo do balão) e do texto do balão
+  const TYPE_B = { normal: '#6a6f66', fogo: '#a0482e', agua: '#3a6a9a', planta: '#4f7a3a', eletrico: '#b08a20', pedra: '#7a5230', voador: '#6a5a9a' };
+  const TYPE_TXT = { normal: '#f2ecd8', fogo: '#e8a080', agua: '#8ab8e8', planta: '#a8d08a', eletrico: '#ead070', pedra: '#d8b088', voador: '#c0b0e8' };
 
   /** Monta a rodada: os dois escolhem golpe e a ordem sai por prioridade/velocidade. */
   function startRound() {
@@ -201,31 +203,32 @@
 
   function showEvents(events) {
     for (const e of events) {
-      const x = posOf(e.who), y = groundY - S / 2;
+      // números saem por cima do bicho (84 no design); textinhos um pouco acima
+      const x = posOf(e.who), y = 84, ty = 78;
       const who = nameSide(e.who);
       switch (e.kind) {
         case 'use': {
           const m = G.MOVES[e.move];
-          floater(m.name, x, groundY - S - 4, G.TYPE_COLOR[m.type] || '#fff', 1.2);
+          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 50 : 66 });
           if (m.cat !== 'status') sim.lunge = { who: e.who, t: 0 };
           else sim.glow = { who: e.who, t: 0, color: G.TYPE_COLOR[m.type] };
           log(`${who} usou ${m.name}!`);
           break;
         }
         case 'damage': {
-          const color = e.mult > 1 ? '#fb923c' : e.mult < 1 ? '#a8a29e' : '#fff';
-          floater(`${e.amount}`, x, y, color, 1.1, e.crit ? 13 : 10);
-          if (e.crit) floater('CRÍTICO!', x, y - 13, '#fde047', 1.2, 9);
+          const color = e.mult > 1 ? '#e0a040' : e.mult < 1 ? '#a8b0a8' : e.who === 'lead' ? '#e06a52' : '#f2ecd8';
+          floater(`-${e.amount}`, x, y, color, 0.9, e.crit ? 18 : 14);
+          if (e.crit) floater('CRÍTICO!', x, y - 16, '#e0a040', 1.1, 11);
           sim.hit = { who: e.who, t: 0, crit: e.crit };
           if (e.crit) log('Um golpe crítico!');
           if (e.mult > 1) log('É super efetivo!');
           if (e.mult < 1) log('Não é muito efetivo…');
           break;
         }
-        case 'miss': log('Mas errou!'); floater('ERROU!', posOf(e.who === 'lead' ? 'wild' : 'lead'), y, '#d6d3d1', 1.1, 9); break;
+        case 'miss': log('Mas errou!'); floater('ERROU!', posOf(e.who === 'lead' ? 'wild' : 'lead'), ty, '#a8b0a8', 1.1, 11); break;
         case 'critUp':
           if (e.failed) log(`A concentração de ${who} já está no máximo!`);
-          else { floater('Foco↑', x, y - 6, '#fde047'); log(`${who} está concentrado!`); }
+          else { floater('FOCO↑', x, ty, '#e0a040', 1.1, 11); log(`${who} está concentrado!`); }
           break;
         case 'item': {
           const it = G.HELD[e.item];
@@ -236,40 +239,40 @@
             orb: `${who} perdeu um pouco de HP pela ${it.name}.`,
             leftovers: `${who} recuperou um pouco de HP com as ${it.name}.`,
           }[e.what];
-          if (e.what === 'heal' || e.what === 'leftovers') floater(`+${e.amount}`, x, y, '#4ade80');
-          else if (e.what === 'orb') floater(`-${e.amount}`, x, y + 4, '#fca5a5');
-          else floater(it.name, x, y - 8, '#fde68a', 1.2, 9);
+          if (e.what === 'heal' || e.what === 'leftovers') floater(`+${e.amount}`, x, y, '#8ac25a');
+          else if (e.what === 'orb') floater(`-${e.amount}`, x, y, '#e06a52');
+          else floater(it.name.toUpperCase(), x, ty, '#ead9b0', 1.2, 11);
           log(msg);
           break;
         }
         case 'stat': {
           const up = e.stages > 0;
           if (e.failed) { log(`${G.STAT_LABEL[e.stat]} de ${who} não vai mais ${up ? 'subir' : 'cair'}!`); break; }
-          floater(`${STAT_SHORT[e.stat]}${up ? '↑' : '↓'}${Math.abs(e.stages) > 1 ? (up ? '↑' : '↓') : ''}`, x, y - 6, up ? '#86efac' : '#fca5a5');
+          floater(`${STAT_SHORT[e.stat].toUpperCase()}${up ? '↑' : '↓'}${Math.abs(e.stages) > 1 ? (up ? '↑' : '↓') : ''}`, x, ty, up ? '#8ac25a' : '#e06a52', 1.1, 11);
           log(`${G.STAT_LABEL[e.stat]} de ${who} ${up ? 'subiu' : 'caiu'}${Math.abs(e.stages) > 1 ? ' muito' : ''}!`);
           break;
         }
         case 'status': {
           const st = G.STATUS[e.status];
-          floater(st.short, x, y - 6, st.color);
+          floater(st.short.toUpperCase(), x, ty, st.color, 1.1, 11);
           log(e.rest ? `${who} dormiu e recuperou a saúde!` : `${who} ficou ${st.label.toLowerCase()}!`);
           break;
         }
         case 'fail': log('Não teve efeito…'); break;
         case 'cant':
           if (e.why === 'recarga') {
-            floater('...', x, y - 6, '#d6d3d1');
+            floater('...', x, ty, '#a8b0a8', 1.1, 11);
             log(`${who} precisa recarregar!`);
             break;
           }
-          floater(e.why === 'sono' ? 'zzz' : 'PAR', x, y - 6, G.STATUS[e.why].color);
+          floater(e.why === 'sono' ? 'ZZZ' : 'PAR', x, ty, G.STATUS[e.why].color, 1.1, 11);
           log(e.why === 'sono' ? `${who} está dormindo.` : `${who} está paralisado e não consegue se mexer!`);
           break;
-        case 'protect': floater('Proteger', x, y - 8, '#7dd3fc', 1.1, 9); sim.glow = { who: e.who, t: 0, color: '#7dd3fc' }; log(`${who} se protegeu!`); break;
-        case 'protected': floater('bloqueou', x, y - 8, '#7dd3fc', 1.1, 9); log(`${who} se protegeu do ataque!`); break;
+        case 'protect': floater('PROTEGER', x, ty, '#8ab8e8', 1.1, 11); sim.glow = { who: e.who, t: 0, color: '#7dd3fc' }; log(`${who} se protegeu!`); break;
+        case 'protected': floater('BLOQUEOU', x, ty, '#8ab8e8', 1.1, 11); log(`${who} se protegeu do ataque!`); break;
         case 'wake': log(`${who} acordou!`); break;
-        case 'heal': floater(`+${e.amount}`, x, y, '#4ade80'); log(e.drain ? `${who} sugou energia!` : `${who} recuperou HP!`); break;
-        case 'recoil': floater(`-${e.amount}`, x, y + 4, '#fca5a5'); log(`${who} sofreu o impacto do golpe!`); break;
+        case 'heal': floater(`+${e.amount}`, x, y, '#8ac25a'); log(e.drain ? `${who} sugou energia!` : `${who} recuperou HP!`); break;
+        case 'recoil': floater(`-${e.amount}`, x, y, '#e06a52'); log(`${who} sofreu o impacto do golpe!`); break;
         case 'residual': {
           floater(`-${e.amount}`, x, y, G.STATUS[e.status].color);
           log(`${who} sofre com ${e.status === 'queimadura' ? 'a queimadura' : 'o veneno'}!`);
@@ -306,7 +309,11 @@
     sim.lastReward = res;
     sim.xpGain = res.xp;
     sim.xpGainT = 3; // "+XP" ao lado da barra de EXP
-    floater(`+${res.xp} XP`, leadX + S / 2, groundY - S / 2, '#67e8f9');
+    bubble('lead', `+${res.xp.toLocaleString('pt-BR')} EXP`, { accent: '#e0a040', color: '#e0a040', life: 2, y: 62 });
+    const td = G.today(state);
+    td.xp += res.xp;
+    if (res.tm) td.items++;
+    if (res.drop) td.items++;
     if (res.tm) toast(`Achou a ${res.tm.toUpperCase()}: ${G.MOVES[G.TMS[res.tm].move].name}! (exclusiva)`, 4.5);
     if (res.drop) toast(`O ${G.SPECIES[sim.wild.species].name} deixou cair: ${G.SHOP[res.drop].name}!`, 3);
     handleXpEvents(res.events, lead);
@@ -335,6 +342,7 @@
       return setPhase('win');
     }
     if (mode === 'ask') return openPrompt('catch');
+    bubble('wild', 'CLIQUE NELE!', { accent: '#e0a040', color: '#e0a040', life: DOWN_S, y: 92 });
     setPhase('down'); // manual: clique no caído pra lançar
   }
 
@@ -347,6 +355,7 @@
 
   function openPrompt(kind) {
     sim.prompt = kind;
+    if (state.settings.collapsed) state.settings.collapsed = false; // recolhida: abre pra perguntar
     setPhase('prompt');
     sync();
   }
@@ -411,6 +420,9 @@
         if (res.drop) toast(`Encontrou: ${G.SHOP[res.drop].name}!`, 3);
       }
       G.addCaught(state, w);
+      G.today(state).caught++;
+      if (!sim.defeated && sim.lastReward) G.today(state).xp += sim.lastReward.xp;
+      bubble('cap', 'PEGOU!', { accent: '#e0a040', color: '#e0a040', life: 2 });
       const r = sim.lastReward;
       const sub = [r ? `+${r.xp} EXP` : '', r ? `+${r.coins} moedas` : '', state.box.includes(w) ? 'foi pra caixa' : 'registrado na Dex'].filter(Boolean).join(' · ');
       toast(`Oba! ${G.SPECIES[w.species].name.toUpperCase()}${w.shiny ? ' ✦' : ''} foi capturado!`, 4.5, { sub, kind: 'success' });
@@ -418,11 +430,12 @@
       setPhase('caught');
     } else if (sim.defeated) {
       log(`${name(w)} escapou da cápsula!`);
-      floater('Escapou!', wildTargetX + S / 2, groundY - S - 4, '#fca5a5', 1.2, 10);
+      bubble('cap', 'ESCAPOU!', { accent: '#c0402e', color: '#e06a52', life: 1.3 });
       // depois de escapar, às vezes foge de vez
       if (Math.random() < (G.SPECIES[w.species].legendary ? 0.25 : 0.1)) {
-        toast(`${name(w)} fugiu!`, 3);
         log(`${name(w)} fugiu!`);
+        bubble('wild', 'FUGIU!', { accent: '#6a6f66', color: '#a8b0a8', life: 1.4, y: 92 });
+        sim.fled = true; // sai correndo pra direita
         setPhase('win');
       } else {
         const mode = state.settings.catchMode;
@@ -432,7 +445,7 @@
         else openPrompt('retry');
       }
     } else {
-      toast('Escapou!');
+      bubble('cap', 'ESCAPOU!', { accent: '#c0402e', color: '#e06a52', life: 1.3 });
       log(`${name(w)} escapou da cápsula!`);
       // jogar a cápsula gastou o turno do líder: só o selvagem age nesta rodada
       sim.queue = [{ who: 'wild', move: G.chooseMove(sim.bw, sim.bl) }, { end: true }];
@@ -449,6 +462,7 @@
     if (!sim.toast && sim.toasts.length) sim.toast = { ...sim.toasts.shift(), t: 0 };
     if (sim.toast && (sim.toast.t += dt) > sim.toast.seconds) sim.toast = null;
     sim.floaters = sim.floaters.filter((f) => (f.t += dt) < f.life);
+    for (const [who, b] of Object.entries(sim.bubbles)) if ((b.t += dt) > b.life) delete sim.bubbles[who];
     if (sim.lunge && (sim.lunge.t += dt) > 0.25) sim.lunge = null;
     if (sim.glow && (sim.glow.t += dt) > 0.5) sim.glow = null;
     if (sim.hit && (sim.hit.t += dt) > 0.3) sim.hit = null;
@@ -461,6 +475,7 @@
     if (!lead) return;
     const max = G.maxHp(lead);
     sim.t += dt;
+    G.today(state).active += dt;
 
     // creche e ovos andam com o tempo de jogo
     for (const e of G.tickBreeding(state, dt)) {
@@ -477,7 +492,7 @@
       case 'walk':
         sim.walkT += dt;
         lead.steps = (lead.steps || 0) + dt * 2; // ~2 passos por segundo andando
-        sim.scroll += dt * 26;
+        sim.scroll += dt * 32; // 4 px a cada quadro de 8 fps, como no design
         lead.hp = Math.min(max, lead.hp + max * 0.15 * dt); // cura entre batalhas
         if ((sim.ppT += dt) > 2.5) { // PP volta aos poucos andando
           sim.ppT = 0;
@@ -487,9 +502,9 @@
         break;
 
       case 'appear': {
-        const k = Math.min(1, sim.t / 0.8);
-        sim.wildX = W + 4 + (wildTargetX - W - 4) * (1 - Math.pow(1 - k, 3));
-        if (k >= 1) {
+        const kk = Math.min(1, sim.t / 0.8);
+        sim.wildX = fieldW + 10 + (wildTargetX - fieldW - 10) * (1 - Math.pow(1 - kk, 3));
+        if (kk >= 1) {
           sim.bl = G.battler(lead, 'lead');
           sim.bw = G.battler(sim.wild, 'wild');
           sim.queue = [];
@@ -511,17 +526,19 @@
         if (sim.t >= 0.55) setPhase('shake');
         break;
 
-      case 'shake':
+      case 'shake': // "·", "· ·", "· · ·" em cima da cápsula
+        sim.bubbles.cap = { text: ['·', '· ·', '· · ·'][Math.min(2, Math.floor(sim.t / 0.5))], accent: '#e0a040', color: '#f2ecd8', life: 9, t: 0 };
         if (sim.t >= 1.5) finishCapture();
         break;
 
       case 'win':
-        sim.wildAlpha = Math.max(0, 1 - sim.t / 0.8);
-        if (sim.t >= 1) endBattle();
+        if (sim.fled) sim.wildX += dt * 128; // foge correndo pra direita
+        else sim.wildAlpha = Math.max(0, 1 - sim.t / 0.8);
+        if (sim.t >= (sim.fled ? 1.4 : 1)) endBattle();
         break;
 
       case 'caught':
-        if (sim.t >= 1) endBattle();
+        if (sim.t >= 1.6) endBattle();
         break;
 
       case 'prompt':
@@ -550,114 +567,93 @@
   }
 
   // ---------- Desenho da cena (canvas) ----------
-  // As placas, diálogos e botões são HTML (strip-ui.js). O canvas desenha o céu/chão, os bichos,
-  // a cápsula, os números flutuando, o "!" do encontro e as faíscas da captura.
-  const FONT = '"Pixelify Sans", monospace';
+  // A ficha, os cards, os balões e a pergunta são HTML (strip-ui.js). O canvas desenha, dentro do
+  // campo, os arbustos e o chão rolando, a fila de bichos, o selvagem, a cápsula, as faíscas e os
+  // números de dano. Coordenadas em px do campo (x=0 no início do campo, y em px do design).
 
-  /** Texto do canvas (números flutuando): branco com contorno escuro. */
-  function text(str, x, y, { size = 12, weight = 700, color = '#fff', align = 'center', outline = true } = {}) {
-    ctx.font = `${weight} ${size}px ${FONT}`;
+  /** Texto do canvas no estilo do design: Silkscreen com contorno de 2 px nas 4 direções. */
+  function text(str, x, y, { size = 14, color = '#f2ecd8', align = 'center', font = 'Silkscreen' } = {}) {
+    ctx.font = `${size}px ${font}, monospace`;
     ctx.textAlign = align;
-    ctx.textBaseline = 'middle';
+    ctx.textBaseline = 'top';
     x = Math.round(x); y = Math.round(y);
-    if (outline) {
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(2, size / 4);
-      ctx.strokeStyle = '#383840';
-      ctx.strokeText(str, x, y);
-    }
+    ctx.fillStyle = '#0a0c0e';
+    for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) ctx.fillText(str, x + dx, y + dy);
     ctx.fillStyle = color;
     ctx.fillText(str, x, y);
   }
 
-  function measure(str, size = 12, weight = 700) {
-    ctx.font = `${weight} ${size}px ${FONT}`;
+  function measure(str, size = 14) {
+    ctx.font = `${size}px Silkscreen, monospace`;
     return ctx.measureText(str).width;
   }
 
-  function ellipse(cx, cy, rx, ry, color) {
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
-
-  /** Plataforma oval embaixo de um bicho (52×12 no design). */
-  function platform(x, w) {
-    ellipse(x + w / 2, H - 8 * k, 26 * k, 6 * k, '#7cb45a');
-  }
-
-  /** Criatura (PNG customizado animado ou pixel art), encaixada numa caixa size×size. */
-  function sprite(id, shiny, x, y, { flip = false, alpha = 1, size = S, t = sim.anim } = {}) {
+  /** Criatura (PNG customizado animado ou pixel art), encaixada na caixa 64×48 com os pés em FEET. */
+  function sprite(id, shiny, x, { flip = false, alpha = 1, dy = 0, t = sim.anim, filter = null } = {}) {
     const sheet = A.creature(id, shiny);
-    A.drawSheet(ctx, sheet, A.frameAt(sheet, t), x, y, size, size, { flip, alpha });
+    if (filter) { ctx.save(); ctx.filter = filter; }
+    A.drawSheet(ctx, sheet, A.frameAt(sheet, t), Math.round(x), FEET - BOX_H + dy, BOX, BOX_H, { flip, alpha });
+    if (filter) ctx.restore();
   }
 
-  function itemSprite(id, x, y, { size, alpha = 1 } = {}) {
+  function itemSprite(id, x, y, size, alpha = 1) {
     const sheet = A.item(id);
-    A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), x, y, size, size, { alpha });
+    A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), Math.round(x), Math.round(y), size, size, { alpha });
+  }
+
+  /** Repete uma imagem na horizontal (w×h cada), rolando com `offset`. */
+  function tiled(im, w, h, offset, y) {
+    if (!im || !im.complete || !im.naturalWidth) return;
+    let x = -(((offset % w) + w) % w);
+    for (; x < fieldW; x += w) ctx.drawImage(im, Math.round(x), y, w, h);
   }
 
   function drawGround() {
-    // céu e grama em faixas, como no design (20/14/18/22 px do topo, o resto é grama)
-    const bands = [[20, '#c4e6f6'], [14, '#d8f0ee'], [18, '#bfe6a0'], [22, '#acdc8c'], [999, '#98ce78']];
-    let y0 = 0;
-    for (const [h, c] of bands) {
-      const hh = Math.min(H - y0, Math.ceil(h * k));
-      ctx.fillStyle = c;
-      ctx.fillRect(0, Math.floor(y0), W, hh + 1);
-      y0 += h * k;
-      if (y0 >= H) break;
-    }
-    // tiles customizados da zona (pasta de sprites) por cima, rolando enquanto anda
-    if (bg) {
-      const h = bg.img.height * bgScale;
-      A.drawTiled(ctx, bg.img, bgScale, sim.scroll * (bg.cfg.speed ?? 0.35), 0, W, H - h + (bg.cfg.offsetY || 0) * bgScale);
-    }
-    if (ground) {
-      const h = ground.img.height * groundScale;
-      A.drawTiled(ctx, ground.img, groundScale, sim.scroll * (ground.cfg.speed ?? 1), 0, W, H - h);
-    }
-  }
-
-  /** "!" de alerta em cima do selvagem quando ele aparece (balãozinho do design). */
-  function drawAlert(x, y) {
-    const w = 22 * k, h = 26 * k, dy = Math.floor(sim.alertT * 5) % 2 ? -5 * k : 0;
-    const bx = Math.round(x - w / 2), by = Math.round(y - h + dy);
-    ctx.fillStyle = '#566072';
-    ctx.beginPath(); ctx.roundRect(bx, by, Math.round(w), Math.round(h), 6 * k); ctx.fill();
-    ctx.fillStyle = '#f8f8f8';
-    ctx.beginPath(); ctx.roundRect(bx + 3 * k, by + 3 * k, Math.round(w - 6 * k), Math.round(h - 6 * k), 3 * k); ctx.fill();
-    text('!', bx + w / 2, by + h / 2 + k, { size: Math.round(17 * k), color: '#c82838', outline: false });
-  }
-
-  /** Faísca em "+" (captura), piscando. */
-  function spark(x, y, s, on) {
-    if (!on) return;
-    const q = Math.max(1, Math.round(6 * k * s));
-    ctx.fillStyle = '#fff6a8';
-    ctx.fillRect(x, y, q, q);
-    ctx.fillRect(x, y - q, q, q); ctx.fillRect(x, y + q, q, q); ctx.fillRect(x - q, y, q, q); ctx.fillRect(x + q, y, q, q);
-  }
-
-  // pisca quando leva dano; brilho colorido quando usa golpe de status
-  const blinkAlpha = (who) => (sim.hit && sim.hit.who === who && Math.floor(sim.hit.t * 20) % 2 === 0 ? 0.25 : 1);
-
-  function drawGlow(who, x, y) {
-    if (!sim.glow || sim.glow.who !== who) return;
-    const k = sim.glow.t / 0.5;
+    // arbustos (rolam na metade da velocidade) e o chão de terra com o recorte nas pontas
+    const bg = A.tile(state.zone, 'bg'), gr = A.tile(state.zone, 'ground');
     ctx.save();
-    ctx.globalAlpha = 0.55 * (1 - k);
-    ctx.fillStyle = sim.glow.color || '#fff';
+    ctx.globalAlpha = 0.9;
+    if (bg) { const s = bg.cfg.scale || 40 / bg.img.height; tiled(bg.img, bg.img.width * s, bg.img.height * s, sim.scroll * (bg.cfg.speed ?? 0.5), 146 - bg.img.height * s); }
+    else tiled(TEX.arbustos, 128, 40, sim.scroll / 2, 106);
+    ctx.restore();
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(x + S / 2, y + S / 2, S * (0.45 + k * 0.35), 0, Math.PI * 2);
-    ctx.fill();
+    const y = 136, w = fieldW;
+    ctx.moveTo(0, y + 12); ctx.lineTo(6, y + 12); ctx.lineTo(6, y + 6); ctx.lineTo(w - 6, y + 6); ctx.lineTo(w - 6, y + 12);
+    ctx.lineTo(w, y + 12); ctx.lineTo(w, 200); ctx.lineTo(0, 200); ctx.closePath();
+    ctx.clip();
+    if (gr) { const s = gr.cfg.scale || 64 / gr.img.height; tiled(gr.img, gr.img.width * s, gr.img.height * s, sim.scroll * (gr.cfg.speed ?? 1), 200 - gr.img.height * s); }
+    else tiled(TEX.chao, 128, 64, sim.scroll, y);
     ctx.restore();
   }
 
+  /** Faísca em "+" de 4 px (captura). */
+  function spark(x, y) {
+    ctx.fillStyle = '#fff6a8';
+    for (const [dx, dy] of [[0, 0], [0, -4], [0, 4], [-4, 0], [4, 0]]) ctx.fillRect(Math.round(x + dx), Math.round(y + dy), 4, 4);
+  }
+
+  // avanço no ataque: o líder vai 20 px pra frente, o selvagem 16 px pra trás (pro lado do líder)
   function lungeOffset(who) {
     if (!sim.lunge || sim.lunge.who !== who) return 0;
-    return Math.round(Math.sin((Math.PI * sim.lunge.t) / 0.25) * 7);
+    return Math.round(Math.sin((Math.PI * sim.lunge.t) / 0.25) * (who === 'lead' ? 20 : 16));
+  }
+  const hurt = (who) => sim.hit && sim.hit.who === who && sim.hit.t < 0.25;
+
+  /** Posição da cápsula (px do campo) agora, ou null. */
+  function capsulePos() {
+    if (!sim.capsule) return null;
+    const rest = { x: wildTargetX + BOX / 2 - 12, y: FEET - 24 };
+    if (sim.phase === 'throw') {
+      const kk = Math.min(1, sim.t / 0.55);
+      const x0 = leadX + 40, y0 = 110;
+      return { x: x0 + (rest.x - x0) * kk, y: y0 + (rest.y - y0) * kk - Math.sin(Math.PI * kk) * 56 };
+    }
+    if (['shake', 'caught'].includes(sim.phase) || (sim.phase === 'retry' && sim.t < 0.3)) {
+      const wob = sim.phase === 'shake' && Math.floor(sim.t / 0.25) % 2 === 1 ? (Math.floor(sim.t * 8) % 2 ? -3 : 3) : 0;
+      return { x: rest.x + wob, y: rest.y };
+    }
+    return null;
   }
 
   function draw() {
@@ -667,73 +663,72 @@
     layout();
     const lead = G.getLead(state);
     StripUI.update(view(lead));
-    if (!state.starterChosen || !lead) return;
+    if (!state.starterChosen || !lead || state.settings.collapsed) return;
 
+    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * k * FX, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, fieldW, 200);
+    ctx.clip();
     drawGround();
     if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
-    const y = groundY - S;
 
-    // líder (passeia virando no fim; pula de leve)
+    // a equipe anda em fila atrás do líder (8 quadros por segundo, como no design)
     const walking = sim.phase === 'walk';
-    const animated = A.creature(lead.species, lead.shiny).frames > 1;
-    const bob = !animated && (walking || sim.phase === 'caught') ? (Math.floor(sim.t * (walking ? 3.3 : 5)) % 2 ? -Math.round(3 * k) : 0) : 0;
+    const tick = Math.floor(sim.anim * 8);
     const resting = sim.phase === 'rest';
-    platform(leadX, S);
-    drawGlow('lead', leadX, y);
-    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), y + bob, { alpha: resting ? 0.45 : blinkAlpha('lead'), flip: sim.walkFlip });
-    if (resting) text('z', leadX + S + 3 + Math.sin(sim.t * 3) * 2, y + 6 - ((sim.t * 6) % 8), { size: Math.round(14 * k), color: '#e8ecff' });
+    const others = state.team.filter((c) => c !== lead);
+    others.forEach((c, i) => {
+      const x = leadX - GAP * (i + 1) - (i === 0 ? 2 : 0);
+      if (x < -BOX) return;
+      const still = A.creature(c.species, c.shiny).frames > 1;
+      const dy = still ? 0 : walking ? ((tick + i + 1) % 2 === 0 ? -3 : 0) : (((tick >> 2) + i + 1) % 2 === 0 ? -1 : 0);
+      sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
+    });
+    const animated = A.creature(lead.species, lead.shiny).frames > 1;
+    const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -3 : 0) : ((tick >> 2) % 2 === 0 ? -1 : 0);
+    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
+      dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1,
+    });
+    if (resting) text('Z', leadX + BOX - 8 + Math.sin(sim.t * 3) * 2, 96 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
     if (sim.flash > 0) {
       ctx.globalAlpha = sim.flash;
       ctx.fillStyle = '#fff';
-      ctx.fillRect(leadX - 2, y - 2, S + 4, S + 4);
+      ctx.fillRect(leadX + 6, FEET - BOX_H - 2, BOX - 12, BOX_H + 4);
       ctx.globalAlpha = 1;
     }
 
-    // selvagem
+    // selvagem (olha pra esquerda; foge virado pra direita)
     const w = sim.wild;
     if (w && sim.phase !== 'shake' && sim.phase !== 'caught') {
       const wx = sim.wildX - lungeOffset('wild');
-      const wbob = sim.phase === 'fight' && !sim.defeated && Math.floor(sim.t * 4) % 2 ? -Math.round(3 * k) : 0;
-      platform(wx, S);
-      drawGlow('wild', wx, y);
-      // derrotado: fica caído e meio apagado esperando a captura
-      sprite(w.species, w.shiny, wx, y + wbob, { flip: true, alpha: (sim.defeated ? 0.5 : 1) * sim.wildAlpha * blinkAlpha('wild'), t: sim.defeated ? 0 : sim.anim });
-      if (sim.defeated && sim.phase === 'down') {
-        text('clique pra capturar', wx + S / 2, y - 4 * k, { size: Math.round(16 * k) });
-      }
-      if (sim.alertT > 0) drawAlert(wx + S / 2 + 6 * k, y - 2 * k);
+      const wbob = sim.phase === 'fight' && !sim.defeated && ((tick >> 1) % 2 === 0) ? -1 : 0;
+      const flash = hurt('wild') && tick % 2 === 0;
+      sprite(w.species, w.shiny, wx, {
+        flip: !sim.fled, dy: wbob, t: sim.defeated ? 0 : sim.anim,
+        alpha: (sim.defeated && !sim.fled ? 0.6 : 1) * sim.wildAlpha,
+        filter: flash ? 'brightness(2.4)' : sim.phase === 'throw' && sim.t > 0.4 ? 'brightness(3)' : null,
+      });
     }
 
-    // cápsula
-    const capSize = Math.round(S * 0.6);
-    if (sim.phase === 'throw') {
-      const kk = sim.t / 0.55;
-      const x0 = leadX + S, x1 = wildTargetX + S / 4;
-      const cx = x0 + (x1 - x0) * kk;
-      const cy = y + S / 3 - Math.sin(Math.PI * kk) * (H * 0.35);
-      itemSprite(sim.capsule.item, cx, cy, { size: capSize });
-    } else if (sim.phase === 'shake' || sim.phase === 'caught') {
-      const wob = sim.phase === 'shake' ? Math.round(Math.sin(sim.t * 14) * 2) * (Math.floor(sim.t / 0.5) % 2) : 0;
-      const cx = wildTargetX + (S - capSize) / 2 + wob;
-      platform(wildTargetX + (S - capSize) / 2, capSize);
-      itemSprite(sim.capsule.item, cx, groundY - capSize, { size: capSize, alpha: 1 });
-      if (sim.phase === 'caught') { // faíscas piscando (como no design)
-        const tw = Math.floor(sim.t / 0.4) % 2 === 0;
-        spark(Math.round(cx - 18 * k), Math.round(groundY - capSize - 6 * k), 1, tw);
-        spark(Math.round(cx + capSize + 14 * k), Math.round(groundY - capSize - 14 * k), 1, !tw);
-        spark(Math.round(cx - 30 * k), Math.round(groundY - 8 * k), 0.66, !tw);
-      }
+    // cápsula voando / balançando no chão / faíscas da captura
+    const cp = capsulePos();
+    if (cp) itemSprite(sim.capsule.item, cp.x, cp.y, 24);
+    if (cp && sim.phase === 'caught' && Math.floor(sim.t / 0.25) % 2 === 0) {
+      spark(cp.x - 12, cp.y - 8);
+      spark(cp.x + 22, cp.y - 14);
+      spark(cp.x + 6, cp.y - 22);
     }
 
-    // números flutuando (presos na cena)
+    // números subindo (3 px a cada quadro de 8 fps)
     for (const f of sim.floaters) {
-      ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
-      const fs = Math.round(((f.size || 10) >= 12 ? 22 : 16) * k);
-      const half = measure(f.text, fs) / 2 + 2;
-      const fx = Math.min(sceneR - half, Math.max(sceneL + half, f.x));
-      text(f.text, fx, f.y - f.t * 12, { size: fs, color: f.color });
+      ctx.globalAlpha = Math.min(1, 3 * (1 - f.t / f.life));
+      const half = measure(f.text, f.size) / 2 + 3;
+      text(f.text, Math.min(fieldW - half, Math.max(half, f.x)), f.y - f.t * 24, { size: f.size, color: f.color });
       ctx.globalAlpha = 1;
     }
+    ctx.restore();
 
     if (debug && debug.on) {
       const hit = cursor ? hitTest(cursor.x, cursor.y) : null;
@@ -741,48 +736,106 @@
         `mouse ${cursor ? `${Math.round(cursor.x)},${Math.round(cursor.y)}` : '—'} ${hit || '-'} · ${clickThrough ? 'atravessa' : 'PEGA'} · dpr ${dpr}`,
         `sistema ${debug.pt ? `${debug.pt.x - debug.b.x},${debug.pt.y - debug.b.y}` : '—'} · botão ${debug.reader ? 'lido' : 'SEM leitor'} · clique ${debug.lastClick || '—'}`,
       ];
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = 'rgba(20,22,30,0.9)';
-      ctx.fillRect(sceneL, H - 22, sceneR - sceneL, 22);
-      lines.forEach((l, i) => text(l, sceneL + 4, H - 16 + i * 10, { size: 9, weight: 500, color: '#cdf5dc', align: 'left', outline: false }));
+      ctx.fillStyle = 'rgba(18,22,26,0.92)';
+      ctx.fillRect(0, 176, fieldW, 24);
+      lines.forEach((l, i) => text(l, 4, 178 + i * 11, { size: 9, font: '"Pixelify Sans"', align: 'left', color: '#cdf5dc' }));
     }
+  }
+
+  /** Bichos da zona pro card "Na área": até 4, lendários só depois de vistos. */
+  function areaMons() {
+    const zone = G.ZONES.find((z) => z.id === state.zone) || G.ZONES[0];
+    const ids = Object.entries(zone.pool).sort((a, b) => b[1] - a[1]).map(([id]) => id)
+      .filter((id) => !G.SPECIES[id].legendary || state.dex.seen[id]).slice(0, 4);
+    const mons = ids.map((id) => ({
+      species: id, name: G.SPECIES[id].name, seen: true,
+      state: state.dex.caught[id] ? 'caught' : state.dex.seen[id] ? 'seen' : 'unk',
+    }));
+    return {
+      range: `${zone.levels[0]}–${zone.levels[1]}`, zone: zone.name.toUpperCase(), mons,
+      caught: mons.filter((m) => m.state === 'caught').length, total: mons.length,
+    };
+  }
+
+  function eggInfo() {
+    const eggs = state.eggs || [];
+    const e = [...eggs].sort((a, b) => b.progress / b.need - a.progress / a.need)[0];
+    const [a, b] = (state.daycare && state.daycare.mons) || [];
+    const hint = G.breedChance(a, b) > 0 ? 'Casal na creche: logo vem um ovo.' : a && b ? 'Esse par não põe ovo.' : 'Deixe um casal na creche.';
+    return {
+      egg: e ? { pct: Math.floor((e.progress / e.need) * 100), left: Math.ceil((e.need - e.progress) * 2) } : null, // ~2 passos por segundo
+      eggs: eggs.length, eggsMax: G.EGGS_MAX, daycareHint: hint,
+    };
+  }
+
+  /** Texto do modo recolhido (o que está acontecendo agora). */
+  function miniLine(zoneTxt) {
+    const w = sim.wild, nm = w ? G.SPECIES[w.species].name.toUpperCase() : '';
+    const gold = '#e0a040', gray = '#a8b0a8', red = '#e06a52';
+    switch (sim.phase) {
+      case 'appear': return { text: `! ${nm} NV${w.level}`, color: red, alert: Math.floor(sim.t * 4) % 2 === 0 };
+      case 'fight': return { text: `LUTANDO · ${nm}`, color: gray };
+      case 'down': case 'prompt': return { text: `? ${nm} NV${w.level}`, color: red, alert: Math.floor(sim.t * 4) % 2 === 0 };
+      case 'throw': case 'shake': case 'retry': return { text: 'CÁPSULA · · ·', color: gold };
+      case 'caught': return { text: 'PEGOU!', color: gold };
+      case 'win':
+        if (sim.fled) return { text: `${nm} FUGIU`, color: gray };
+        return sim.lastReward ? { text: `${nm} · +${sim.lastReward.xp} EXP`, color: gold } : { text: nm, color: gray };
+      case 'rest': return { text: 'DESCANSANDO…', color: gray };
+    }
+    if (sim.toast) return { text: sim.toast.text.toUpperCase(), color: sim.toast.kind === 'success' ? gold : gray };
+    return { text: zoneTxt, color: gray };
   }
 
   /** O que a camada HTML mostra agora. */
   function view(lead) {
-    const zoneIdx = Math.max(0, G.ZONES.findIndex((z) => z.id === state.zone));
-    const zone = G.ZONES[zoneIdx];
+    const st = state.settings;
     const caps = (state.items.capsula || 0) + (state.items.super || 0);
     const over = cursor && hitTest(cursor.x, cursor.y);
     const v = {
-      width: W, height: H, starter: !state.starterChosen || !lead, mode: 'explore',
-      zone: `ZONA ${zoneIdx + 1} · ${zone.name.toUpperCase()}`, coins: state.coins, caps, hot: over, foe: null, dialog: null,
+      width: W, height: H, starter: !state.starterChosen || !lead, collapsed: st.collapsed, cardClosed: st.cardClosed,
+      card: st.card, fieldW, caps, auto: G.isAuto(state), hot: over && over !== 'lead' && over !== 'wild' ? over : null,
+      tag: null, bubbles: [], prompt: null, toast: null,
     };
-    if (v.starter) {
-      v.dialog = { kind: 'info', title: 'Clique aqui pra escolher seu parceiro!', more: true };
-      return v;
-    }
+    if (v.starter) return v;
+    const tick = Math.floor(sim.anim * 8);
     v.lead = {
       species: lead.species, shiny: lead.shiny, name: G.SPECIES[lead.species].name + (lead.shiny ? ' ✦' : ''), g: lead.gender,
       lv: lead.level, hp: lead.hp, max: G.maxHp(lead), xp: G.clamp(lead.xp / G.xpToNext(lead.level), 0, 1),
       st: lead.status ? G.STATUS[lead.status] : null, xpGain: sim.xpGainT > 0 ? sim.xpGain : 0,
+      blink: hurt('lead') && tick % 2 === 0, resting: sim.phase === 'rest',
     };
+    const area = areaMons();
+    if (st.collapsed) {
+      v.mini = { ...miniLine(`${area.zone} NV${area.range}`), dy: sim.phase === 'walk' && tick % 2 === 0 ? -2 : 0, gx: -(Math.floor(sim.scroll / 2) % 64) };
+      return v;
+    }
+    v.area = area;
+    Object.assign(v, eggInfo());
+    v.eggDx = tick % 24 < 4 ? (tick % 2 === 0 ? 1 : -1) : 0;
+    const td = G.today(state), mins = Math.floor(td.active / 60);
+    v.today = { active: `${Math.floor(mins / 60)}H${String(mins % 60).padStart(2, '0')}`, caught: td.caught, xp: td.xp, items: td.items };
+
     const w = sim.wild;
-    if (w && !sim.defeated && ['appear', 'fight', 'throw'].includes(sim.phase)) {
-      v.foe = { name: G.SPECIES[w.species].name + (w.shiny ? ' ✦' : ''), g: w.gender, lv: w.level, hp: w.hp, max: G.maxHp(w), st: w.status ? G.STATUS[w.status] : null };
+    if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
+      v.tag = { x: Math.round(sim.wildX - 4), y: 88, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
+    }
+    const cp = capsulePos();
+    for (const [who, b] of Object.entries(sim.bubbles)) {
+      if (who === 'wild' && !w) continue;
+      if (who === 'lead' && sim.phase === 'prompt') continue; // a pergunta fica por cima dele
+      const x = who === 'lead' ? leadX + 24 : who === 'cap' ? (cp ? cp.x + 12 : wildTargetX + BOX / 2) : sim.wildX + 28;
+      v.bubbles.push({ id: who, text: b.text, accent: b.accent, color: b.color, x, y: b.y ?? BUBBLE_Y[who] });
     }
     if (sim.phase === 'prompt' && w) {
-      const nm = StripUI.esc(G.SPECIES[w.species].name.toUpperCase());
-      const left = Math.max(0, Math.ceil(PROMPT_S - sim.t));
-      v.mode = 'prompt';
-      v.dialog = {
-        kind: w.shiny || !state.dex.caught[w.species] ? 'alert' : 'info',
-        title: sim.prompt === 'retry' ? `<strong>${nm}</strong> escapou da cápsula!` : `<strong>${nm}</strong> foi derrotado${state.dex.caught[w.species] ? '' : ' (novo!)'}`,
-        ask: { q: sim.prompt === 'retry' ? 'Tentar outra?' : 'Capturar?', left, frac: Math.max(0, 1 - sim.t / PROMPT_S) },
+      v.prompt = {
+        x: sim.wildX + 28, y: 12,
+        q: sim.prompt === 'retry' ? 'Tentar outra?' : 'Capturar?',
+        who: `${G.SPECIES[w.species].name.toUpperCase()} NV${w.level}`,
+        frac: Math.max(0, 1 - sim.t / PROMPT_S),
       };
     } else if (sim.toast) {
-      v.mode = 'toast';
-      v.dialog = { kind: sim.toast.kind, title: StripUI.esc(sim.toast.text), sub: sim.toast.sub, more: true };
+      v.toast = { text: sim.toast.text, sub: sim.toast.sub, kind: sim.toast.kind, x: Math.round(fieldW / 2) };
     }
     return v;
   }
@@ -793,12 +846,14 @@
   let clickThrough = true;
 
   function hitTest(x, y) {
-    if (!state.starterChosen) return 'hud';
-    const ui = StripUI.hit(x, y); // placas e botões HTML (data-hit)
+    const ui = StripUI.hit(x, y); // ficha, cards e botões HTML (data-hit)
     if (ui) return ui;
-    const top = groundY - S;
-    if (x >= leadX && x <= leadX + S && y >= top) return 'lead';
-    if (sim.wild && ['fight', 'down'].includes(sim.phase) && x >= sim.wildX && x <= sim.wildX + S && y >= top - 14) return 'wild';
+    if (!state.starterChosen || state.settings.collapsed) return null;
+    // bichos no campo (o resto do campo deixa o clique passar pra área de trabalho)
+    const fx = x / k - FX, fy = y / k;
+    if (fx < 0 || fx > fieldW || fy < FEET - BOX_H - 4 || fy > FEET + 4) return null;
+    if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
+    if (sim.wild && ['fight', 'down'].includes(sim.phase) && fx >= sim.wildX + 6 && fx <= sim.wildX + BOX - 6) return 'wild';
     return null;
   }
 
@@ -810,7 +865,7 @@
   function hover(x, y) {
     cursor = x == null ? null : { x, y };
     const hit = cursor ? hitTest(x, y) : null;
-    canvas.style.cursor = hit ? 'pointer' : 'default';
+    document.body.style.cursor = hit ? 'pointer' : 'default';
     if (!!hit === clickThrough) {
       clickThrough = !hit;
       bridge.setClickThrough(clickThrough);
@@ -839,8 +894,14 @@
     const now = performance.now();
     if (now - lastAction < 400) return;
     lastAction = now;
-    if (hit === 'hud' || hit === 'lead') bridge.openPanel('team');
+    const st = state.settings;
+    if (hit === 'hud' || hit === 'lead') bridge.openPanel(state.starterChosen ? 'team' : undefined);
     if (hit.startsWith('menu:')) bridge.openPanel(hit.slice(5));
+    if (hit === 'collapse' || hit === 'expand') st.collapsed = hit === 'collapse';
+    if (hit === 'card:close' || hit === 'card:open') st.cardClosed = hit === 'card:close';
+    if (hit === 'card:next') st.card = { bichos: 'ovo', ovo: 'hoje', hoje: 'bichos' }[st.card] || 'bichos';
+    if (hit === 'auto') G.toggleAuto(state);
+    if (['collapse', 'expand', 'card:close', 'card:open', 'card:next', 'auto'].includes(hit)) { save(); sync(); }
     if (hit === 'askYes') answerCatch(true);
     if (hit === 'askNo') answerCatch(false);
     if (hit === 'wild') {
@@ -894,6 +955,14 @@
         break;
       case 'autoBuy':
         state.settings.autoBuy = !!cmd.value;
+        break;
+      case 'toggleAuto':
+        G.toggleAuto(state);
+        break;
+      case 'stripUi': // recolher/expandir a faixa, fechar o card, trocar o card
+        if ('collapsed' in cmd) state.settings.collapsed = !!cmd.collapsed;
+        if ('cardClosed' in cmd) state.settings.cardClosed = !!cmd.cardClosed;
+        if (['bichos', 'ovo', 'hoje'].includes(cmd.card)) state.settings.card = cmd.card;
         break;
       case 'catchAnswer':
         answerCatch(cmd.yes);

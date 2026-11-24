@@ -7,7 +7,6 @@
 //   items/<item>.png               capsula, super
 //   tiles/<zona>_ground.png        chão que repete sem fim (ou default_ground.png)
 //   tiles/<zona>_bg.png            fundo com parallax (ou default_bg.png)
-//   ui/hud.png, ui/toast.png       molduras 9-slice da faixa
 //   ui/card.png, ui/button.png     molduras 9-slice do painel
 //   ui/background.png              textura que repete no fundo do painel
 //   ui/coin.png, ui/capsule.png    ícones

@@ -917,7 +917,27 @@
     if (st.autoBuy === undefined) st.autoBuy = false;
     if (st.autoMoves === undefined) st.autoMoves = true;
     if (!['azul', 'vermelho', 'verde', 'noite'].includes(st.palette)) st.palette = 'azul'; // tema da moldura (Assets.PALETTES)
+    // faixa (Layout B): recolhida, card da direita fechado e qual card mostra
+    if (st.collapsed === undefined) st.collapsed = false;
+    if (st.cardClosed === undefined) st.cardClosed = false;
+    if (!['bichos', 'ovo', 'hoje'].includes(st.card)) st.card = 'bichos';
     return st;
+  }
+
+  /** Liga/desliga a captura automática (AUTO da faixa): ligado = modo automático, desligado = pergunta. */
+  function toggleAuto(state) {
+    const st = ensureSettings(state);
+    if (st.catchMode === 'all' || st.catchMode === 'new') { st.autoPrev = st.catchMode; st.catchMode = 'ask'; }
+    else st.catchMode = st.autoPrev || 'new';
+    return st.catchMode;
+  }
+  const isAuto = (state) => ['all', 'new'].includes(ensureSettings(state).catchMode);
+
+  /** Resumo do dia (card "Hoje" da faixa). Zera quando vira o dia. */
+  function today(state, now = new Date()) {
+    const date = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    if (!state.today || state.today.date !== date) state.today = { date, caught: 0, xp: 0, items: 0, active: 0 };
+    return state.today;
   }
 
   /** Os modos automáticos querem capturar esse selvagem depois de derrotado? */
@@ -1046,7 +1066,7 @@
 
   const api = {
     TYPE_LABEL, TYPE_COLOR, EFFECT, SPECIES, SPECIES_ORDER, STARTERS, ZONES, SHOP, TEAM_MAX,
-    stampMet, CATCH_MODES, ensureSettings, wantsCatch, autoBuyCapsules, ivPercent, perfectIvs, matchesFilter, releaseCreatures, toggleLock,
+    stampMet, CATCH_MODES, ensureSettings, toggleAuto, isAuto, today, wantsCatch, autoBuyCapsules, ivPercent, perfectIvs, matchesFilter, releaseCreatures, toggleLock,
     DAYCARE_MAX, EGGS_MAX, EGG_CHECK_S, rollGender, baseSpecies, breedChance, breedMood, hatchTime, makeEgg,
     hatchEgg, ensureBreeding, tickBreeding, daycarePut, daycareTake,
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,

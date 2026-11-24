@@ -1,4 +1,4 @@
-// Processo principal do Electron: cria a faixa sobre a barra de tarefas, o painel,
+// Processo principal do Electron: cria a faixa logo acima da barra de tarefas, o painel,
 // o ícone da bandeja, cuida do save em disco e carrega os sprites customizados.
 
 const { app, BrowserWindow, screen, Tray, Menu, ipcMain, nativeImage, shell, powerMonitor } = require('electron');
@@ -22,10 +22,13 @@ const CONFIG_FILE = () => userFile('config.json');
 const APP_SPRITES = path.join(__dirname, 'assets', 'sprites');
 const USER_SPRITES = () => userFile('sprites');
 
+// A faixa é um overlay transparente de 800×200 (px do design B2) logo acima da barra de tarefas.
+// Só a ficha, o chão, os bichos e os cards aparecem; o resto deixa o clique passar.
+const STRIP_H = 200;
 const DEFAULT_CONFIG = {
-  width: 600,      // largura da faixa (o design tem 600 px)
-  offsetX: 230,    // distância da borda esquerda da tela (no Win11 o lado esquerdo costuma estar livre)
-  mode: 'taskbar', // 'taskbar' = em cima da barra | 'above' = logo acima dela
+  width: 800,      // largura em px do design (escala 100%)
+  scale: 1,        // tamanho: 1 = 1:1 com o design, 1.25, 1.5
+  offsetX: 230,    // distância da borda esquerda da tela
   displayId: null, // null = monitor principal
 };
 
@@ -56,23 +59,13 @@ function targetDisplay() {
 }
 
 function stripBounds() {
-  const d = targetDisplay();
-  const b = d.bounds;
-  const wa = d.workArea;
-
-  // A barra de tarefas é a diferença entre a tela inteira e a área útil.
-  let height = b.y + b.height - (wa.y + wa.height);
-  let y = wa.y + wa.height;
-
-  // Barra oculta, na lateral ou no topo (ou modo "acima"): fica logo acima da borda inferior.
-  if (config.mode === 'above' || height < 28) {
-    height = 48;
-    y = wa.y + wa.height - height;
-  }
-
-  const width = Math.min(config.width, b.width);
-  const x = b.x + Math.max(0, Math.min(config.offsetX, b.width - width));
-  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+  const wa = targetDisplay().workArea;
+  // fica em cima da área útil, encostada na barra de tarefas (sem brigar com ela pelo topo)
+  const s = config.scale || 1;
+  const height = Math.round(Math.min(STRIP_H * s, wa.height / 3));
+  const width = Math.round(Math.min(config.width * (height / STRIP_H), wa.width));
+  const x = wa.x + Math.max(0, Math.min(config.offsetX, wa.width - width));
+  return { x: Math.round(x), y: Math.round(wa.y + wa.height - height), width, height };
 }
 
 const sameBounds = (a, b) =>
@@ -266,15 +259,22 @@ function trackCursor() {
 // O painel é um "DS": topo do aparelho + tela de cima (384) + dobradiça (24) + tela de baixo (384),
 // com 512 px de largura (256×192 por tela, em 2×). Se não couber na área útil, encolhe com zoom.
 const PANEL_W = 512, PANEL_H = 26 + 384 + 24 + 384;
-function panelZoom() {
+// espaço livre acima da faixa (ela é sempre no topo e cobriria o pé do painel)
+function panelArea() {
   const wa = targetDisplay().workArea;
-  return Math.min(1, (wa.height - 16) / PANEL_H, (wa.width - 16) / PANEL_W);
+  const sb = alive(strip) ? strip.getBounds() : stripBounds();
+  const h = sb.y - wa.y;
+  return h >= PANEL_H * 0.6 ? { ...wa, height: h } : wa;
+}
+function panelZoom() {
+  const a = panelArea();
+  return Math.min(1, (a.height - 16) / PANEL_H, (a.width - 16) / PANEL_W);
 }
 
 function panelBounds() {
   const z = panelZoom();
   const w = Math.round(PANEL_W * z), h = Math.round(PANEL_H * z);
-  const wa = targetDisplay().workArea;
+  const wa = panelArea();
   const sb = alive(strip) ? strip.getBounds() : stripBounds();
   // abre logo acima da faixa, alinhado com ela, sem sair da área útil
   const x = Math.max(wa.x + 8, Math.min(sb.x, wa.x + wa.width - w - 8));
@@ -388,9 +388,16 @@ function buildTrayMenu() {
     { label: '→ Mover para a direita', click: () => moveBy(60) },
     {
       label: 'Largura',
-      submenu: [360, 460, 600, 800].map((w) => ({
+      submenu: [680, 800, 1000, 1200].map((w) => ({
         label: `${w}px`, type: 'radio', checked: config.width === w,
         click: () => { config.width = w; saveConfig(); placeStrip({ force: true }); },
+      })),
+    },
+    {
+      label: 'Tamanho',
+      submenu: [1, 1.25, 1.5].map((s) => ({
+        label: `${Math.round(s * 100)}%`, type: 'radio', checked: (config.scale || 1) === s,
+        click: () => { config.scale = s; saveConfig(); placeStrip({ force: true }); },
       })),
     },
     {
@@ -401,16 +408,6 @@ function buildTrayMenu() {
         type: 'radio', checked: d.id === current,
         click: () => { config.displayId = d.id; saveConfig(); placeStrip({ force: true }); },
       })),
-    },
-    {
-      label: 'Ficar acima da barra de tarefas',
-      type: 'checkbox',
-      checked: config.mode === 'above',
-      click: (item) => {
-        config.mode = item.checked ? 'above' : 'taskbar';
-        saveConfig();
-        placeStrip({ force: true });
-      },
     },
     { type: 'separator' },
     {
@@ -479,7 +476,7 @@ ipcMain.on('assets:reload', broadcastAssetsChanged);
 // ---------- Ciclo de vida ----------
 app.whenReady().then(() => {
   config = { ...DEFAULT_CONFIG, ...readJson(CONFIG_FILE(), {}) };
-  if (config.width === 460 && !config.widthMigrated) { config.width = 600; config.widthMigrated = true; } // antigo padrão
+  if (!config.layoutB) { config.width = 800; config.layoutB = true; delete config.mode; } // faixa nova (Layout B2)
   createStrip();
   createTray();
   watchUserSprites();

@@ -1,90 +1,87 @@
-// Camada HTML da faixa (design DS do Claude Design): placa do líder, plaquinha do selvagem,
-// caixa de diálogo, botões CAPTURAR/DEIXAR IR, bolsa e menu. Os bichos ficam no canvas (strip.js).
+// Camada HTML da faixa B2 (design "Taskmon · interface retrô", Layout B): ficha do líder, botões,
+// card da direita (bichos da área / ovo / hoje), etiqueta de HP do selvagem, balões, pergunta de
+// captura e o modo recolhido. Chão e bichos ficam no canvas (strip.js).
+// Tudo em px do design (800×200); o #ui é ampliado com zoom = altura da janela / 200.
 // update(view) só mexe no DOM quando algo muda.
 
 (function (root) {
   'use strict';
   const A = root.Assets;
 
-  // formas das placas, copiadas do design (coordenadas em px do design 2×)
-  const SVG = {
-    lead: `<svg aria-hidden="true" width="320" height="88" viewBox="0 0 320 88">
-      <defs><clipPath id="pa-in"><path d="M13 3H304Q309 3 308 8L293 75Q292 81 286 81H13Q3 81 3 71V13Q3 3 13 3Z"/></clipPath></defs>
-      <path d="M12 4H306Q314 4 312 12L296 80Q294 88 286 88H12Q0 88 0 76V16Q0 4 12 4Z" fill="#2a303c"/>
-      <path d="M12 0H306Q314 0 312 8L296 76Q294 84 286 84H12Q0 84 0 72V12Q0 0 12 0Z" fill="#404858"/>
-      <g clip-path="url(#pa-in)"><rect width="320" height="88" fill="#f6f6ea"/><rect y="68" width="320" height="20" fill="#dcdfce"/><rect y="4" width="320" height="2" fill="#ffffff"/></g>
-      <circle cx="42" cy="42" r="29" fill="#dfe6f6" stroke="#404858" stroke-width="3"/>
-      <rect x="24" y="55" width="36" height="5" fill="#b8c4e4"/></svg>`,
-    foe: `<svg aria-hidden="true" width="168" height="44" viewBox="0 0 168 44">
-      <defs><clipPath id="pb-foe"><path d="M9 2H155Q160 2 159 7L152 35Q151 38 147 38H9Q2 38 2 31V9Q2 2 9 2Z"/></clipPath></defs>
-      <path d="M8 3H157Q164 3 162 10L155 37Q153 43 147 43H8Q0 43 0 35V11Q0 3 8 3Z" fill="#2a303c"/>
-      <path d="M8 0H157Q164 0 162 7L155 34Q153 40 147 40H8Q0 40 0 32V8Q0 0 8 0Z" fill="#404858"/>
-      <g clip-path="url(#pb-foe)"><rect width="168" height="44" fill="#f6f6ea"/><rect y="31" width="168" height="10" fill="#dcdfce"/><rect y="3" width="168" height="2" fill="#ffffff"/></g></svg>`,
-    purse: `<svg aria-hidden="true" width="220" height="88" viewBox="0 0 220 88">
-      <defs><clipPath id="pa-cur"><path d="M15 3H207Q217 3 217 13V71Q217 81 207 81H35Q28 81 27 75L11 8Q10 3 15 3Z"/></clipPath></defs>
-      <path d="M14 4H208Q220 4 220 16V76Q220 88 208 88H34Q26 88 24 80L8 12Q6 4 14 4Z" fill="#2a303c"/>
-      <path d="M14 0H208Q220 0 220 12V72Q220 84 208 84H34Q26 84 24 76L8 8Q6 0 14 0Z" fill="#404858"/>
-      <g clip-path="url(#pa-cur)"><rect width="220" height="88" fill="#f6f6ea"/><rect y="68" width="220" height="20" fill="#dcdfce"/><rect y="4" width="220" height="2" fill="#ffffff"/></g></svg>`,
-  };
-  // ícones do menu (grade 10×10 do design)
+  const svg = (w, vb, d, extra = '') => `<svg width="${w[0]}" height="${w[1]}" viewBox="${vb}" shape-rendering="crispEdges" fill="currentColor" fill-rule="evenodd" aria-hidden="true" ${extra}><path d="${d}"/></svg>`;
   const ICON = {
-    team: 'M1 2h3v3H1zM6 1h3v4H6zM0 6h5v3H0zM5 6h5v3H5z',
-    bag: 'M3 0h4v1H3zM2 1h1v2H2zM7 1h1v2H7zM1 3h8v7H1zM4 5h2v2H4z',
-    dex: 'M0 1h10v8H0zM1 2h3v6H1zM6 2h3v6H6z',
-    opts: 'M0 2h10v1H0zM0 5h10v1H0zM0 8h10v1H0zM2 1h2v3H2zM6 4h2v3H6zM3 7h2v3H3z',
+    down: svg([14, 14], '0 0 7 7', 'M0 2h1v1h1v1h1v1h1V4h1V3h1V2h1v1H6v1H5v1H4v1H3V5H2V4H1V3H0z'),
+    up: svg([12, 12], '0 0 7 7', 'M3 1h1v1h1v1h1v1h1v1H6V4H5V3H4V2H3v1H2v1H1v1H0V4h1V3h1V2h1z'),
+    grid: svg([16, 16], '0 0 8 8', 'M0 0h3v3H0zM5 0h3v3H5zM0 5h3v3H0zM5 5h3v3H5z'),
+    bag: svg([16, 16], '0 0 10 10', 'M3 0h4v1H3zM2 1h1v2H2zM7 1h1v2H7zM1 3h8v7H1zM4 5h2v2H4z'),
+    right: svg([6, 10], '0 0 3 5', 'M0 0h1v1h1v1h1v1H2v1H1v1H0z'),
+    left: svg([6, 10], '0 0 3 5', 'M2 0h1v5H2V4H1V3H0V2h1V1h1z'),
+    dex: svg([16, 16], '0 0 10 10', 'M0 1h10v8H0zM1 2h3v6H1zM6 2h3v6H6z', 'style="color:#ead9b0"'),
+    clock: svg([16, 16], '0 0 8 8', 'M2 0h4v1h1v1h1v4H7v1H6v1H2V7H1V6H0V2h1V1h1zM2 1v1H1v4h1v1h4V6h1V2H6V1zM3 2h1v2h2v1H3z', 'style="color:#ead9b0"'),
   };
-  const icon = (d, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 10 10" shape-rendering="crispEdges" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${d}"/></svg>`;
+  const EGG = '../assets/b/ovo.png';
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const hpFill = (r) => (r > 0.5 ? ['#80f4a8', '#28c048'] : r > 0.2 ? ['#fce07a', '#f0a818'] : ['#ff9a8a', '#e83838']);
-  const grad = (r) => { const [a, b] = hpFill(r); return `linear-gradient(${a} 0 45%, ${b} 45% 100%)`; };
   const fmt = (n) => Math.round(n).toLocaleString('pt-BR');
+  const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
 
-  let ui, els = {}, last = {};
+  let ui, els = {}, last = {}, capIcon = '';
 
   function init(parent) {
     ui = document.createElement('div');
     ui.id = 'ui';
-    ui.className = 'explore';
     ui.innerHTML = `
-      <div class="row">
-        <div id="lead" data-hit="hud">${SVG.lead}
-          <canvas id="portrait" class="px" width="48" height="40"></canvas>
+      <div id="full">
+        <section id="lead" data-hit="hud" aria-label="Líder da equipe" title="Equipe">
+          <span class="cnr tl"></span><span class="cnr br"></span>
+          <div id="portrait-box"><div class="gnd"></div><canvas id="portrait" class="px" width="64" height="48"></canvas></div>
           <div class="info">
-            <div class="line"><span class="name dts" id="l-name"></span><span class="g" id="l-g"></span><span class="st hide" id="l-st"></span><span class="lv dts"><small>Nv</small><span id="l-lv"></span></span></div>
-            <div class="line" style="align-items:center;gap:8px"><div class="hp" style="flex:1"><span class="hp-l">HP</span><div class="hp-t"><i id="l-hp"></i></div></div><span class="hpnum dts" id="l-hpn"></span></div>
-            <div class="line" style="align-items:center"><div class="xp" style="flex:1"><i id="l-xp"></i></div><span class="xpgain hide" id="l-xpg"></span></div>
+            <span id="l-name" class="sh"></span>
+            <span id="l-lv" class="ss"><span id="l-lvt"></span><span id="l-g"></span><span class="st hide" id="l-st"></span></span>
+            <div class="stack"><span class="lbl8 ss" id="l-hpt"></span><div class="bar6"><i id="l-hp"></i></div></div>
+            <div class="stack"><span class="lbl8 ss">EXP <span id="l-xpg" style="color:#e0a040"></span></span><div class="bar4"><i id="l-xp" style="background:#5a8ed0"></i></div></div>
+          </div>
+        </section>
+        <div id="field">
+          <div id="tag" class="hide"><div class="row ss"><span id="t-name" style="color:#ead9b0"></span><span id="t-lv" style="color:#e0a040"></span></div><div class="bar5"><i id="t-hp"></i></div></div>
+          <div id="bubbles"></div>
+          <div id="toast" class="bubble wide hide"><span id="ts-t"></span><small id="ts-s"></small></div>
+          <div id="prompt" class="hide" role="group">
+            <div style="display:flex;align-items:baseline;gap:6px"><span class="q" id="p-q"></span><span class="who ss" id="p-who"></span></div>
+            <div style="display:flex;gap:6px"><div class="yn yes ss" data-hit="askYes">SIM</div><div class="yn no ss" data-hit="askNo">NÃO</div></div>
+            <div class="tm"><i id="p-tm"></i></div>
+            <span class="tail" id="p-tail"></span>
           </div>
         </div>
-        <div id="scene">
-          <span id="zone"></span>
-          <div id="foe" class="hide">${SVG.foe}
-            <div class="info">
-              <div class="line" style="gap:5px"><span class="name dts" id="f-name"></span><span class="g" id="f-g"></span><span class="st hide" id="f-st"></span><span class="lv dts"><small>Nv</small><span id="f-lv"></span></span></div>
-              <div class="bar"><i id="f-hp"></i></div>
-            </div>
+        <div id="tools">
+          <div class="tool" data-hit="collapse" title="Recolher">${ICON.down}</div>
+          <div class="tool" data-hit="menu:team" title="Painéis">${ICON.grid}</div>
+          <div class="tool" data-hit="menu:bag" title="Mochila">${ICON.bag}</div>
+        </div>
+        <section id="card">
+          <div id="card-close" data-hit="card:close" title="Recolher card">${ICON.right}</div>
+          <div id="card-body" data-hit="card:next" title="Trocar card (bichos · ovo · hoje)"></div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="capico"></span><span class="big13 ss sh" id="c-caps"></span>
+            <div class="auto ss" data-hit="auto" id="c-auto" title="Captura automática"></div>
           </div>
-        </div>
-        <div id="dlg"><p id="d-title"></p><p class="sub hide" id="d-sub"></p>
-          <div class="ask hide" id="d-ask"><span id="d-q"></span><div class="timer"><div class="tm"><i id="d-tm"></i></div></div><span class="secs dts" id="d-secs"></span></div>
-          <span class="more hide" id="d-more">▼</span></div>
-        <div id="act">
-          <div class="tbtn red" data-hit="askYes" id="b-yes"><img class="px" id="b-yes-ico" width="12" height="15" alt="">CAPTURAR</div>
-          <div class="tbtn blue" data-hit="askNo" id="b-no">DEIXAR IR</div>
-        </div>
-        <div id="purse" data-hit="menu:bag">${SVG.purse}
-          <div class="info">
-            <div class="it"><span class="ico" id="p-coin"></span><span class="lbl">MOEDAS</span><span class="val dts" id="p-coins"></span></div>
-            <div class="it"><span class="ico" id="p-cap"></span><span class="lbl">CÁPSULAS</span><span class="val dts" id="p-caps"></span></div>
-          </div>
-        </div>
-        <nav id="menu" aria-label="Menu do jogo">
-          <div class="rbtn" data-hit="menu:team" title="Equipe" style="background:#4caa52">${icon(ICON.team)}</div>
-          <div class="rbtn" data-hit="menu:bag" title="Mochila" style="background:#e89a30">${icon(ICON.bag)}</div>
-          <div class="rbtn" data-hit="menu:dex" title="Dex" style="background:#e05848">${icon(ICON.dex)}</div>
-          <div class="rbtn" data-hit="menu:opts" title="Opções" style="background:#4888d0">${icon(ICON.opts)}</div>
-        </nav>
-      </div>`;
+        </section>
+        <section id="card-mini">
+          <div class="cbtn" data-hit="card:open" title="Expandir card">${ICON.left}</div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span id="cm-ico"></span><span class="ss" id="cm-txt" style="font-size:9px;color:#ead9b0;line-height:1"></span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px"><span class="capico sm"></span><span class="ss" id="cm-caps" style="font-size:8px;line-height:1"></span></div>
+          <div data-hit="auto" id="cm-auto" style="width:24px;height:14px;box-sizing:border-box;border:2px solid #0a0c0e"></div>
+        </section>
+      </div>
+      <div id="mini" data-hit="hud" title="Equipe">
+        <div class="gnd" id="m-gnd"></div>
+        <div style="width:34px;height:30px;flex-shrink:0;display:flex;align-items:flex-end;justify-content:center"><canvas id="m-portrait" class="px" width="32" height="24"></canvas></div>
+        <div style="width:64px;flex-shrink:0;display:flex;flex-direction:column;gap:4px"><span class="ss" id="m-name" style="font-size:8px;color:#ead9b0;line-height:1;white-space:nowrap;overflow:hidden"></span><div class="bar4"><i id="m-hp"></i></div></div>
+        <span id="mini-txt" class="ss" role="status"></span>
+        <span class="seeds ss"><span class="capico sm"></span><span id="m-caps"></span></span>
+        <div class="exp" data-hit="expand" title="Expandir">${ICON.up}</div>
+      </div>
+      <div id="starter" data-hit="hud">Clique aqui pra escolher seu parceiro!</div>`;
     parent.appendChild(ui);
     ui.querySelectorAll('[id]').forEach((el) => { els[el.id] = el; });
     els.ui = ui;
@@ -92,22 +89,15 @@
     return ui;
   }
 
-  /** Ícones de moeda e cápsula (PNG da pasta de sprites ou pixel art embutida). */
+  /** Ícone da cápsula (PNG da pasta de sprites ou pixel art embutida). */
   function icons() {
-    const put = (host, sheet, w, h) => {
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h; c.className = 'px';
-      A.drawSheet(c.getContext('2d'), sheet, 0, 0, 0, w, h);
-      host.replaceChildren(c);
-    };
-    const coin = A.ui('coin'), cap = A.ui('capsule');
-    if (coin) els['p-coin'].innerHTML = `<img class="px" src="${coin.img.src}" width="16" height="16" alt="">`;
-    else put(els['p-coin'], A.creature('_coin'), 16, 16);
-    if (cap) els['p-cap'].innerHTML = `<img class="px" src="${cap.img.src}" width="16" height="20" alt="">`;
-    else put(els['p-cap'], A.item('capsula'), 16, 20);
-    const yes = els['b-yes-ico'];
-    yes.src = cap ? cap.img.src : A.sheetUrl(A.item('capsula'));
-    last.portrait = null; // redesenha o retrato também (pode ter sprite novo)
+    const cap = A.ui('capsule');
+    capIcon = cap ? cap.img.src : A.sheetUrl(A.item('capsula'));
+    ui.querySelectorAll('.capico').forEach((el) => {
+      const sm = el.classList.contains('sm');
+      el.innerHTML = `<img class="px" src="${capIcon}" width="${sm ? 8 : 12}" height="${sm ? 10 : 15}" alt="Cápsulas">`;
+    });
+    last.portrait = last.mportrait = last.area = null; // redesenha (pode ter sprite novo)
   }
 
   const set = (id, key, value, fn) => {
@@ -117,86 +107,199 @@
   };
   const text = (id, key, v) => set(id, key, v, (el, x) => { el.textContent = x; });
   const show = (id, key, on) => set(id, key, !!on, (el, x) => el.classList.toggle('hide', !x));
+  const bar = (id, key, r, color) => set(id, key, `${Math.round(r * 1000)}:${color}`, (el) => { el.style.width = `${(r * 100).toFixed(1)}%`; el.style.background = color; });
 
-  function gender(id, key, g) {
-    set(id, key, g || '', (el, x) => { el.textContent = x === 'F' ? '♀' : x === 'M' ? '♂' : ''; el.className = `g ${x === 'F' ? 'f' : 'm'}`; });
+  function drawSprite(canvas, species, shiny, w, h, opts = {}) {
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, canvas.width, canvas.height);
+    c.save();
+    if (opts.dark) { c.filter = 'brightness(0)'; c.globalAlpha = 0.55; }
+    A.drawSheet(c, A.creature(species, shiny), 0, (canvas.width - w) / 2, canvas.height - h, w, h);
+    c.restore();
   }
-  function status(id, key, st) {
-    set(id, key, st ? st.short : '', (el) => {
-      el.classList.toggle('hide', !st);
-      if (st) { el.textContent = st.short; el.style.background = st.color; }
+
+  // ---------- partes ----------
+  function lead(L) {
+    text('l-name', 'ln', L.name);
+    text('l-lvt', 'llv', `NV${L.lv}`);
+    set('l-g', 'lg', L.g || '', (el, g) => { el.textContent = g === 'F' ? '♀' : g === 'M' ? '♂' : ''; el.style.color = g === 'F' ? '#e88aa0' : '#8ab8e8'; el.style.fontFamily = 'sans-serif'; });
+    set('l-st', 'lst', L.st ? L.st.short : '', (el) => { el.classList.toggle('hide', !L.st); if (L.st) { el.textContent = L.st.short; el.style.background = L.st.color; } });
+    const r = L.max ? L.hp / L.max : 0;
+    text('l-hpt', 'lhpt', `HP ${Math.ceil(L.hp)}/${L.max}`);
+    bar('l-hp', 'lhp', r, '#6f9a4a');
+    bar('l-xp', 'lxp', L.xp, '#5a8ed0');
+    text('l-xpg', 'lxpg', L.xpGain ? `+${L.xpGain}` : '');
+    set('portrait', 'portrait', `${L.species}:${L.shiny}:${A.version}`, (el) => drawSprite(el, L.species, L.shiny, 64, 48));
+    set('portrait', 'pop', L.blink ? 0.35 : L.resting ? 0.5 : 1, (el, x) => { el.style.opacity = x; });
+  }
+
+  function mini(v) {
+    const L = v.lead;
+    text('m-name', 'mn', L.name.toUpperCase());
+    bar('m-hp', 'mhp', L.max ? L.hp / L.max : 0, '#6f9a4a');
+    set('m-portrait', 'mportrait', `${L.species}:${L.shiny}:${A.version}`, (el) => drawSprite(el, L.species, L.shiny, 32, 24));
+    set('m-portrait', 'mdy', v.mini.dy, (el, x) => { el.style.transform = `translateY(${x}px)`; });
+    text('mini-txt', 'mt', v.mini.text);
+    set('mini-txt', 'mc', v.mini.color, (el, x) => { el.style.color = x; });
+    set('mini', 'mb', v.mini.alert ? '#c0402e' : '#0a0c0e', (el, x) => el.style.setProperty('--mb', x));
+    set('m-gnd', 'mg', v.mini.gx, (el, x) => { el.style.backgroundPositionX = `${x}px`; });
+    text('m-caps', 'mcaps', fmt(v.caps));
+  }
+
+  function cardBody(v) {
+    if (v.card === 'ovo') {
+      const E = v.egg;
+      if (!E) {
+        return `<div style="display:flex;flex-direction:column;gap:7px">
+          <div class="row"><span class="k9 ss">OVO</span><span class="v9 ss">${v.eggs}/${v.eggsMax}</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><div class="egg-box" style="opacity:.45"><img class="px" src="${EGG}" width="48" height="56" alt="" style="filter:grayscale(1)"></div>
+          <span style="font-size:11px;line-height:1.15;color:#a8b0a8">${esc(v.daycareHint)}</span></div></div>`;
+      }
+      return `<div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="egg-box"><img class="px" id="egg-img" src="${EGG}" width="48" height="56" alt="Ovo chocando"></div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span class="k9 ss">OVO${v.eggs > 1 ? ` <span style="color:#e0a040">×${v.eggs}</span>` : ''}</span>
+            <span class="ss" style="font-size:8px;color:#a8b0a8;line-height:1">FALTAM</span>
+            <span class="ss sh" style="font-size:14px;color:#f2ecd8;line-height:1">${fmt(E.left)}</span>
+            <span class="ss" style="font-size:8px;color:#a8b0a8;line-height:1">PASSOS</span>
+          </div>
+        </div>
+        <div class="eggbar" role="img" aria-label="Ovo ${E.pct}% chocado"><i style="width:${E.pct}%"></i></div></div>`;
+    }
+    if (v.card === 'hoje') {
+      const T = v.today;
+      return `<div style="display:flex;flex-direction:column;gap:6px">
+        <div class="row"><span class="k9 ss">HOJE</span><span class="ss" style="font-size:9px;color:#e0a040;line-height:1">${esc(T.active)} ATIVO</span></div>
+        <dl class="today ss"><dt>CAPTURAS</dt><dd>${fmt(T.caught)}</dd><dt>EXP</dt><dd>+${fmt(T.xp)}</dd><dt>ITENS</dt><dd>${fmt(T.items)}</dd></dl></div>`;
+    }
+    const Ar = v.area;
+    return `<div style="display:flex;flex-direction:column;gap:7px">
+      <div class="row"><span class="k9 ss">NA ÁREA</span><span class="v9 ss"><span class="dot"></span>NV ${Ar.range}</span></div>
+      <div class="mons">${Ar.mons.map((m, i) => `<span class="mon${m.state === 'unk' ? ' unk' : ''}" title="${m.state === 'unk' ? '???' : esc(m.name)}"><canvas class="px" data-mon="${i}" width="24" height="24" style="margin:0 -2px"></canvas>${m.state === 'caught' ? '<span class="got"></span>' : ''}</span>`).join('')}</div>
+      <div class="row"><span class="ss" style="font-size:10px;color:#ead9b0;line-height:1">DEX ${Ar.caught}/${Ar.total}</span><span class="ss" style="font-size:9px;color:#a8b0a8;line-height:1;white-space:nowrap;overflow:hidden">${esc(Ar.zone)}</span></div></div>`;
+  }
+
+  function card(v) {
+    const key = v.card === 'ovo' ? `ovo:${v.egg ? `${v.egg.left}:${v.egg.pct}` : v.daycareHint}:${v.eggs}`
+      : v.card === 'hoje' ? `hoje:${JSON.stringify(v.today)}`
+      : `bichos:${JSON.stringify(v.area)}:${A.version}`;
+    set('card-body', 'area', key, (el) => {
+      el.innerHTML = cardBody(v);
+      el.querySelectorAll('canvas[data-mon]').forEach((c) => {
+        const m = v.area.mons[c.dataset.mon];
+        if (m.state !== 'unk' || m.seen) drawSprite(c, m.species, false, 24, 24, { dark: m.state === 'unk' });
+      });
     });
+    const egg = els['card-body'].querySelector('#egg-img');
+    if (egg) egg.style.transform = `translateX(${v.eggDx}px)`;
+    text('c-caps', 'ccaps', fmt(v.caps));
+    set('c-auto', 'cauto', v.auto, (el, on) => { el.textContent = on ? 'AUTO ON' : 'AUTO OFF'; el.className = `auto ss ${on ? 'on' : 'off'}`; });
+    set('cm-auto', 'cmauto', v.auto, (el, on) => { el.style.background = on ? '#6f9a4a' : '#262c32'; el.title = on ? 'AUTO ON' : 'AUTO OFF'; });
+    text('cm-caps', 'cmcaps', fmt(v.caps));
+    set('cm-ico', 'cmico', v.card, (el, c) => { el.innerHTML = c === 'ovo' ? `<img class="px" src="${EGG}" width="24" height="28" alt="">` : c === 'hoje' ? ICON.clock : ICON.dex; });
+    text('cm-txt', 'cmtxt', v.card === 'ovo' ? (v.egg ? `${v.egg.pct}%` : '—') : v.card === 'hoje' ? `${v.today.caught}x` : `${v.area.caught}/${v.area.total}`);
+  }
+
+  /** Balões (um por "dono"): cria/remove conforme a lista e prende dentro do campo. */
+  function bubbles(list, fieldW) {
+    const host = els.bubbles;
+    const seen = new Set();
+    for (const b of list) {
+      seen.add(b.id);
+      let el = host.querySelector(`[data-id="${b.id}"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'bubble ss';
+        el.dataset.id = b.id;
+        el.innerHTML = '<span class="t"></span><span class="tail"></span>';
+        host.appendChild(el);
+      }
+      if (el.dataset.text !== b.text) { el.dataset.text = b.text; el.firstChild.textContent = b.text; el.dataset.w = ''; }
+      el.style.setProperty('--acc', b.accent);
+      el.style.setProperty('--col', b.color);
+      const w = Number(el.dataset.w) || (el.dataset.w = el.offsetWidth) || 40;
+      const left = Math.round(Math.max(2, Math.min(fieldW - w - 2, b.x - w / 2)));
+      el.style.left = `${left}px`;
+      el.style.top = `${Math.round(b.y)}px`;
+      el.lastChild.style.left = `${Math.round(Math.max(4, Math.min(w - 14, b.x - left - 5)))}px`;
+    }
+    for (const el of [...host.children]) if (!seen.has(el.dataset.id)) el.remove();
   }
 
   /**
-   * view = { width, height, starter, mode: 'explore'|'toast'|'prompt', zone,
-   *          lead: {species, shiny, name, g, lv, hp, max, xp, st, xpGain}, foe: {...}|null,
-   *          dialog: {kind, title (html), sub, ask: {q, left, frac}, more}, coins, caps, hot }
+   * view = { width, height, starter, collapsed, cardClosed, card, fieldW, lead, tag, bubbles, prompt,
+   *          toast, area, egg, eggs, eggsMax, daycareHint, today, caps, auto, mini, hot }
    */
   function update(v) {
     if (!ui) return;
-    const k = v.height / 104;
+    const k = v.height / 200;
     set('ui', 'zoom', k, (el, x) => { el.style.zoom = x; });
     const dw = Math.round(v.width / k);
-    set('ui', 'w', dw, (el, x) => { el.style.width = `${x}px`; });
-    const cls = [v.starter ? 'starter' : v.mode, dw < 1150 ? 'narrow' : '', dw < 820 ? 'nomenu' : ''].join(' ');
-    set('ui', 'cls', cls, (el, x) => { el.className = x; });
+    set('ui', 'w', dw, (el, x) => { el.style.width = `${x}px`; el.style.height = '200px'; });
 
-    const L = v.lead;
-    if (L) {
-      text('l-name', 'ln', L.name);
-      gender('l-g', 'lg', L.g);
-      status('l-st', 'lst', L.st);
-      text('l-lv', 'llv', String(L.lv));
-      const r = L.max ? L.hp / L.max : 0;
-      set('l-hp', 'lhp', `${Math.round(r * 1000)}`, (el) => { el.style.width = `${(r * 100).toFixed(1)}%`; el.style.background = grad(r); });
-      text('l-hpn', 'lhpn', `${Math.ceil(L.hp)}/${L.max}`);
-      set('l-xp', 'lxp', Math.round(L.xp * 1000), (el, x) => { el.style.width = `${x / 10}%`; });
-      show('l-xpg', 'lxpgs', L.xpGain);
-      text('l-xpg', 'lxpg', L.xpGain ? `+${L.xpGain}` : '');
-      set('portrait', 'portrait', `${L.species}:${L.shiny}:${A.version}`, (el) => {
-        const c = el.getContext('2d');
-        c.clearRect(0, 0, el.width, el.height);
-        A.drawSheet(c, A.creature(L.species, L.shiny), 0, 2, 0, 44, 38);
-      });
+    const mode = v.starter ? 'starter' : v.collapsed ? 'mini' : 'full';
+    set('ui', 'mode', mode, (el, m) => {
+      els.full.classList.toggle('hide', m !== 'full');
+      els.mini.classList.toggle('hide', m !== 'mini');
+      els.starter.classList.toggle('hide', m !== 'starter');
+    });
+    set('mini', 'mx', Math.round((dw - 300) / 2), (el, x) => { el.style.left = `${x}px`; });
+    if (mode === 'starter') return;
+
+    if (mode === 'mini') { mini(v); hot(v.hot); return; }
+
+    lead(v.lead);
+    set('field', 'fw', v.fieldW, (el, x) => { el.style.width = `${x}px`; });
+    show('card', 'cardo', !v.cardClosed);
+    show('card-mini', 'cardc', v.cardClosed);
+    card(v);
+
+    show('tag', 'tags', v.tag);
+    if (v.tag) {
+      const T = v.tag;
+      set('tag', 'tagpos', `${T.x},${T.y}`, (el) => { el.style.left = `${T.x}px`; el.style.top = `${T.y}px`; });
+      text('t-name', 'tn', T.name);
+      text('t-lv', 'tlv', `NV${T.lv}`);
+      bar('t-hp', 'thp', T.r, hpColor(T.r));
     }
 
-    text('zone', 'zone', v.zone || '');
-    show('zone', 'zones', v.mode === 'explore');
-    show('foe', 'foes', !!v.foe);
-    if (v.foe) {
-      const F = v.foe;
-      text('f-name', 'fn', F.name);
-      gender('f-g', 'fg', F.g);
-      status('f-st', 'fst', F.st);
-      text('f-lv', 'flv', String(F.lv));
-      const r = F.max ? F.hp / F.max : 0;
-      set('f-hp', 'fhp', `${Math.round(r * 1000)}`, (el) => { el.style.width = `${(r * 100).toFixed(1)}%`; el.style.background = grad(r); });
+    bubbles(v.bubbles, v.fieldW);
+
+    show('prompt', 'ps', v.prompt);
+    if (v.prompt) {
+      const P = v.prompt;
+      text('p-q', 'pq', P.q);
+      text('p-who', 'pwho', P.who);
+      const pw = els.prompt.offsetWidth || 156;
+      const left = Math.round(Math.max(2, Math.min(v.fieldW - pw - 2, P.x - 96)));
+      set('prompt', 'ppos', `${left},${P.y}`, (el) => { el.style.left = `${left}px`; el.style.top = `${P.y}px`; });
+      set('p-tail', 'ptail', `${P.x - left - 5}:${pw}`, (el) => { el.style.left = `${Math.max(6, Math.min(pw - 16, P.x - left - 5))}px`; });
+      set('p-tm', 'ptm', Math.round(P.frac * 100), (el, x) => { el.style.width = `${x}%`; });
     }
 
-    const D = v.dialog;
-    if (D) {
-      set('dlg', 'dk', `${D.kind || 'info'}${!D.sub && !D.ask ? ' wrap' : ''}`, (el, x) => { el.className = x; });
-      set('d-title', 'dt', D.title, (el, x) => { el.innerHTML = x; });
-      show('d-sub', 'dss', D.sub);
-      text('d-sub', 'ds', D.sub || '');
-      show('d-ask', 'das', D.ask);
-      show('d-more', 'dm', D.more);
-      if (D.ask) {
-        text('d-q', 'dq', D.ask.q);
-        set('d-tm', 'dtm', Math.round(D.ask.frac * 24), (el, x) => { el.style.width = `${(x / 24) * 100}%`; }); // 24 degraus, como no design
-        text('d-secs', 'dsec', `${D.ask.left}s`);
-      }
+    show('toast', 'tos', v.toast && !v.prompt);
+    if (v.toast) {
+      const T = v.toast;
+      text('ts-t', 'tst', T.text);
+      text('ts-s', 'tss', T.sub || '');
+      show('ts-s', 'tsss', T.sub);
+      set('toast', 'tsk', T.kind, (el, kd) => el.style.setProperty('--acc', kd === 'success' ? '#e0a040' : kd === 'alert' ? '#c0402e' : '#6a6f66'));
+      set('toast', 'tsmax', v.fieldW, (el, x) => { el.style.maxWidth = `${Math.min(360, x - 8)}px`; });
+      const el = els.toast;
+      const w = el.offsetWidth;
+      set('toast', 'tspos', `${w}:${v.fieldW}:${T.x}`, () => { el.style.left = `${Math.round(Math.max(4, Math.min(v.fieldW - w - 4, T.x - w / 2)))}px`; el.style.top = '6px'; });
     }
-
-    text('p-coins', 'pc', fmt(v.coins));
-    text('p-caps', 'pk', fmt(v.caps));
-    set('b-yes', 'hy', v.hot === 'askYes', (el, x) => el.classList.toggle('hot', x));
-    set('b-no', 'hn', v.hot === 'askNo', (el, x) => el.classList.toggle('hot', x));
+    hot(v.hot);
   }
 
-  /** Retângulo da cena (onde os bichos andam), em px da janela. */
-  const sceneRect = () => (els.scene ? els.scene.getBoundingClientRect() : null);
+  function hot(h) {
+    if (last.hot === h) return;
+    if (last.hotEl) last.hotEl.classList.remove('hot');
+    last.hot = h;
+    last.hotEl = h ? ui.querySelector(`[data-hit="${h}"]`) : null;
+    if (last.hotEl) last.hotEl.classList.add('hot');
+  }
 
   /** Alvo de clique (data-hit) num ponto, ou null. */
   function hit(x, y) {
@@ -205,5 +308,5 @@
     return h && ui.contains(h) && h.offsetParent !== null ? h.dataset.hit : null;
   }
 
-  root.StripUI = { init, update, sceneRect, hit, icons, esc };
+  root.StripUI = { init, update, hit, icons, esc };
 })(typeof window !== 'undefined' ? window : globalThis);
