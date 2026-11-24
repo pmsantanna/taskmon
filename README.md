@@ -53,7 +53,7 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
 - **Arraste a faixa** pelo chão ou pela barrinha recolhida, pra qualquer lugar
   (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho.
-- **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
+- **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura máxima, tamanho
   (50% a 150%, padrão 75%), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
 - **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. No STATUS, **TROCAR** escolhe os

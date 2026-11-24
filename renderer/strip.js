@@ -21,6 +21,7 @@
   const BOX = 64;          // caixa de cada bicho (64×48, sprite 12×12 em 4×)
   const BOX_H = 48;
   const GAP = 52;          // distância entre os bichos da fila
+  const SCENE_DY = 24;     // a cena (chão, bichos, balões) fica 24 px mais baixa: mais céu, menos terra
   let W = 0, H = 0, k = 1, DW = 800, fieldW = 652, groundW = 800, leadX = 370, wildTargetX = 480;
   let dpr = 1;
 
@@ -60,7 +61,10 @@
     // parte visível do chão (o card da direita cobre o resto); a fila inteira cabe atrás do líder
     fieldW = Math.max(200, Math.round(DW - (state.settings.cardClosed ? 48 : 148)));
     const n = state.settings.showTeam === false ? 1 : state.team.length;
-    leadX = Math.max(Math.round(fieldW * 0.56), GAP * (n - 1) + 6);
+    leadX = 40 + GAP * (n - 1); // a fila começa perto da borda esquerda
+    // largura que a faixa precisa (sem sobrar chão vazio atrás do líder quando ele anda sozinho)
+    const need = Math.round(leadX + 110 + BOX + 34 + (state.settings.cardClosed ? 48 : 148));
+    if (need !== layout.need) { layout.need = need; if (bridge.stripWidth) bridge.stripWidth(need); }
     wildTargetX = Math.min(fieldW - BOX + 4, leadX + 110);
     if (sim && sim.wild && FIGHTING.includes(sim.phase)) sim.wildX = wildTargetX;
   }
@@ -345,7 +349,6 @@
       return setPhase('win');
     }
     if (mode === 'ask') return openPrompt('catch');
-    bubble('wild', 'CLIQUE NELE!', { accent: '#e0a040', color: '#e0a040', life: DOWN_S, y: 92 });
     setPhase('down'); // manual: clique no caído pra lançar
   }
 
@@ -742,7 +745,7 @@
     StripUI.update(view(lead));
     if (!state.starterChosen || !lead || state.settings.collapsed) return;
 
-    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * k * FX, 0);
+    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * k * FX, dpr * k * SCENE_DY);
     ctx.imageSmoothingEnabled = false;
     ctx.save();
     drawGround();
@@ -892,18 +895,18 @@
 
     const w = sim.wild;
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
-      v.tag = { x: Math.round(sim.wildX - 4), y: 88, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
+      v.tag = { x: Math.round(sim.wildX - 4), y: 88 + SCENE_DY, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
     }
     const cp = capsulePos();
     for (const [who, b] of Object.entries(sim.bubbles)) {
       if (who === 'wild' && !w) continue;
       if (who === 'lead' && sim.phase === 'prompt') continue; // a pergunta fica por cima dele
       const x = who === 'lead' ? leadX + 24 : who === 'cap' ? (cp ? cp.x + 12 : wildTargetX + BOX / 2) : sim.wildX + 28;
-      v.bubbles.push({ id: who, text: b.text, accent: b.accent, color: b.color, x, y: b.y ?? BUBBLE_Y[who] });
+      v.bubbles.push({ id: who, text: b.text, accent: b.accent, color: b.color, x, y: (b.y ?? BUBBLE_Y[who]) + SCENE_DY });
     }
     if (sim.phase === 'prompt' && w) {
       v.prompt = {
-        x: sim.wildX + 28, y: 12,
+        x: sim.wildX + 28, y: 12 + SCENE_DY,
         q: sim.prompt === 'retry' ? 'Tentar outra?' : 'Capturar?',
         who: `${G.SPECIES[w.species].name.toUpperCase()} NV${w.level}`,
         frac: Math.max(0, 1 - sim.t / PROMPT_S),
@@ -924,7 +927,7 @@
     if (ui) return ui;
     if (!state.starterChosen || state.settings.collapsed) return null;
     // bichos no campo; o chão e os arbustos servem pra arrastar; o céu deixa o clique passar
-    const fx = x / k - FX, fy = y / k;
+    const fx = x / k - FX, fy = y / k - SCENE_DY;
     if (fx < 0 || fx > groundW) return null;
     if (fy >= FEET - BOX_H - 12 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
       if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';

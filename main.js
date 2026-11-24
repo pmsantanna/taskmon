@@ -63,7 +63,9 @@ function stripBounds() {
   // fica em cima da área útil, encostada na barra de tarefas (sem brigar com ela pelo topo)
   const s = config.scale || DEFAULT_CONFIG.scale;
   const height = Math.round(Math.min(STRIP_H * s, wa.height / 3));
-  const width = Math.round(Math.min(config.width * (height / STRIP_H), wa.width));
+  // a faixa pede a largura que precisa (líder sozinho = mais estreita); config.width é o máximo
+  const dw = Math.min(config.width, wantWidth || config.width);
+  const width = Math.round(Math.min(dw * (height / STRIP_H), wa.width));
   const x = wa.x + Math.max(0, Math.min(config.offsetX, wa.width - width));
   const up = Math.max(0, Math.min(config.offsetY || 0, wa.height - height));
   return { x: Math.round(x), y: Math.round(wa.y + wa.height - height - up), width, height };
@@ -99,6 +101,7 @@ function placeStrip({ force = false } = {}) {
 // gente: a página avisa quando apertou na ficha, no chão ou na barrinha recolhida, e aqui a janela
 // segue o cursor até soltar o botão. Soltou: guarda a posição (relativa à área útil do monitor).
 let drag = null, dragTimer = null;
+let wantWidth = null; // largura (px do design) que a faixa pediu
 function dragStart() {
   if (drag || !alive(strip)) return;
   const p = screen.getCursorScreenPoint(), b = strip.getBounds();
@@ -513,7 +516,7 @@ function buildTrayMenu() {
     { label: '← Mover para a esquerda', click: () => moveBy(-60) },
     { label: '→ Mover para a direita', click: () => moveBy(60) },
     {
-      label: 'Largura',
+      label: 'Largura máxima',
       submenu: [680, 800, 1000, 1200].map((w) => ({
         label: `${w}px`, type: 'radio', checked: config.width === w,
         click: () => { config.width = w; saveConfig(); placeStrip({ force: true }); },
@@ -592,6 +595,12 @@ ipcMain.on('panel:open', (_e, section) => showPanel(section));
 ipcMain.on('strip:dragStart', dragStart);
 ipcMain.on('strip:dragEnd', dragEnd);
 ipcMain.on('strip:scale', (_e, dir) => stepScale(dir));
+ipcMain.on('strip:width', (_e, w) => {
+  w = Math.max(360, Math.round(Number(w) || 0));
+  if (w === wantWidth) return;
+  wantWidth = w;
+  placeStrip();
+});
 ipcMain.on('panel:win', (e, action) => {
   const w = BrowserWindow.fromWebContents(e.sender);
   if (action === 'closeAll') return closeAllPanels();
