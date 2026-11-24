@@ -921,6 +921,7 @@
     if (st.collapsed === undefined) st.collapsed = false;
     if (st.cardClosed === undefined) st.cardClosed = false;
     if (!['bichos', 'ovo', 'hoje'].includes(st.card)) st.card = 'bichos';
+    if (st.showTeam === undefined) st.showTeam = true; // faixa: equipe toda andando ou só o líder
     return st;
   }
 

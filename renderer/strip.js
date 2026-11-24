@@ -16,12 +16,12 @@
   // ---------- Layout ----------
   // Faixa B2: tudo em px do design (800×200), ampliado por k = altura da janela / 200.
   // O "campo" (chão + bichos) começa em x=196 (depois da ficha do líder) e vai até o card da direita.
-  const FX = 196;          // início do campo
+  const FX = 0;            // início do campo (a ficha do líder saiu; o chão vai de ponta a ponta)
   const FEET = 148;        // linha dos pés (bottom: 52 no design)
   const BOX = 64;          // caixa de cada bicho (64×48, sprite 12×12 em 4×)
   const BOX_H = 48;
   const GAP = 52;          // distância entre os bichos da fila
-  let W = 0, H = 0, k = 1, DW = 800, fieldW = 456, leadX = 250, wildTargetX = 360;
+  let W = 0, H = 0, k = 1, DW = 800, fieldW = 652, groundW = 800, leadX = 370, wildTargetX = 480;
   let dpr = 1;
 
   // Tamanho do canvas em pixels físicos. Chamado no resize, quando o DPI muda (o evento
@@ -56,9 +56,12 @@
   function layout() {
     k = H / 200 || 1;
     DW = W / k;
-    fieldW = Math.max(160, Math.round(DW - FX - (state.settings.cardClosed ? 48 : 148)));
-    leadX = Math.round(fieldW * 0.548);          // 250 num campo de 456
-    wildTargetX = Math.min(fieldW - BOX + 6, leadX + 110);
+    groundW = Math.ceil(DW);
+    // parte visível do chão (o card da direita cobre o resto); a fila inteira cabe atrás do líder
+    fieldW = Math.max(200, Math.round(DW - (state.settings.cardClosed ? 48 : 148)));
+    const n = state.settings.showTeam === false ? 1 : state.team.length;
+    leadX = Math.max(Math.round(fieldW * 0.56), GAP * (n - 1) + 6);
+    wildTargetX = Math.min(fieldW - BOX + 4, leadX + 110);
     if (sim && sim.wild && FIGHTING.includes(sim.phase)) sim.wildX = wildTargetX;
   }
 
@@ -108,7 +111,7 @@
 
   // Balões do design: um por dono ('lead', 'wild', 'cap'); o novo substitui o anterior.
   // y = topo do balão em px do campo.
-  const BUBBLE_Y = { lead: 66, wild: 72, cap: 92 };
+  const BUBBLE_Y = { lead: 46, wild: 58, cap: 92 }; // o líder tem as barrinhas de HP/EXP em cima da cabeça
   function bubble(who, text, { accent = '#6a6f66', color = '#f2ecd8', life = 1.2, y } = {}) {
     sim.bubbles[who] = { text, accent, color, life, t: 0, y };
   }
@@ -203,13 +206,13 @@
 
   function showEvents(events) {
     for (const e of events) {
-      // números saem por cima do bicho (84 no design); textinhos um pouco acima
-      const x = posOf(e.who), y = 84, ty = 78;
+      // números saem do corpo do bicho e sobem (em cima da cabeça ficam as barrinhas)
+      const x = posOf(e.who), y = 106, ty = 100;
       const who = nameSide(e.who);
       switch (e.kind) {
         case 'use': {
           const m = G.MOVES[e.move];
-          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 50 : 66 });
+          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 50 : 46 });
           if (m.cat !== 'status') sim.lunge = { who: e.who, t: 0 };
           else sim.glow = { who: e.who, t: 0, color: G.TYPE_COLOR[m.type] };
           log(`${who} usou ${m.name}!`);
@@ -309,7 +312,7 @@
     sim.lastReward = res;
     sim.xpGain = res.xp;
     sim.xpGainT = 3; // "+XP" ao lado da barra de EXP
-    bubble('lead', `+${res.xp.toLocaleString('pt-BR')} EXP`, { accent: '#e0a040', color: '#e0a040', life: 2, y: 62 });
+    bubble('lead', `+${res.xp.toLocaleString('pt-BR')} EXP`, { accent: '#e0a040', color: '#e0a040', life: 2, y: 44 });
     const td = G.today(state);
     td.xp += res.xp;
     if (res.tm) td.items++;
@@ -578,7 +581,8 @@
     ctx.textBaseline = 'top';
     x = Math.round(x); y = Math.round(y);
     ctx.fillStyle = '#0a0c0e';
-    for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) ctx.fillText(str, x + dx, y + dy);
+    const o = size <= 10 ? 1 : 2; // texto pequeno: contorno de 1 px (2 px borra)
+    for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o], [o, o]]) ctx.fillText(str, x + dx, y + dy);
     ctx.fillStyle = color;
     ctx.fillText(str, x, y);
   }
@@ -601,30 +605,103 @@
     A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), Math.round(x), Math.round(y), size, size, { alpha });
   }
 
-  /** Repete uma imagem na horizontal (w×h cada), rolando com `offset`. */
-  function tiled(im, w, h, offset, y) {
-    if (!im || !im.complete || !im.naturalWidth) return;
+  /** Repete uma imagem na horizontal (w×h cada), rolando com `offset`. sy/sh = recorte da origem. */
+  function tiled(im, w, h, offset, y, sy = 0, sh = null) {
+    if (!im || im.complete === false || !(im.naturalWidth || im.width)) return;
+    const iw = im.naturalWidth || im.width, ih = sh ?? (im.naturalHeight || im.height);
     let x = -(((offset % w) + w) % w);
-    for (; x < fieldW; x += w) ctx.drawImage(im, Math.round(x), y, w, h);
+    for (; x < groundW; x += w) ctx.drawImage(im, 0, sy, iw, ih, Math.round(x), y, Math.ceil(w), h);
+  }
+
+  // Chão "inclinado": o piso é visto de cima em perspectiva (as linhas do fundo são mais estreitas e
+  // rolam mais devagar), com a beirada de terra na frente. Cores do piso por zona.
+  const FLOOR_Y = 126, FLOOR_H = 34, FRONT_Y = FLOOR_Y + FLOOR_H; // os pés (148) ficam no meio do piso
+  const FLOOR = {
+    campina: { base: '#5fae4a', dark: '#4f9a40', tuft: '#8ad06a', hi: '#b4e88a', dot: '#e8d070', stone: '#8a8a7e' },
+    lago: { base: '#58a650', dark: '#48924a', tuft: '#84cc6e', hi: '#b0e48e', dot: '#a8c4e8', stone: '#8a8a7e' },
+    caverna: { base: '#7a7a70', dark: '#68685e', tuft: '#8e8e82', hi: '#a8a89a', dot: '#5a5a52', stone: '#bcbcae', filter: 'grayscale(.75) brightness(.8)' },
+    vulcao: { base: '#5a4038', dark: '#4a3430', tuft: '#6e4a3c', hi: '#8a5a44', dot: '#e0703a', stone: '#3a2a26', filter: 'sepia(.7) hue-rotate(-25deg) saturate(1.4) brightness(.62)', lava: true },
+  };
+  const floorCache = {};
+  function floorTex(zone) {
+    if (floorCache[zone]) return floorCache[zone];
+    const P = FLOOR[zone] || FLOOR.campina;
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 16;
+    const g = c.getContext('2d');
+    g.fillStyle = P.base; g.fillRect(0, 0, 64, 16);
+    let seed = zone.length * 977 + 13;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 90; i++) { g.fillStyle = P.dark; g.fillRect(Math.floor(rnd() * 64), Math.floor(rnd() * 16), 2, 1); }
+    for (let i = 0; i < 26; i++) { const x = Math.floor(rnd() * 64), y = 1 + Math.floor(rnd() * 14); g.fillStyle = P.tuft; g.fillRect(x, y, 1, 2); g.fillStyle = P.hi; g.fillRect(x, y, 1, 1); }
+    for (let i = 0; i < 5; i++) { g.fillStyle = P.dot; g.fillRect(Math.floor(rnd() * 63), Math.floor(rnd() * 15), 1, 1); }
+    for (let i = 0; i < 4; i++) { g.fillStyle = P.stone; g.fillRect(Math.floor(rnd() * 62), Math.floor(rnd() * 15), 2, 1); }
+    return (floorCache[zone] = c);
   }
 
   function drawGround() {
-    // arbustos (rolam na metade da velocidade) e o chão de terra com o recorte nas pontas
     const bg = A.tile(state.zone, 'bg'), gr = A.tile(state.zone, 'ground');
+    const P = FLOOR[state.zone] || FLOOR.campina;
+    // arbustos no fundo (rolam devagar)
     ctx.save();
     ctx.globalAlpha = 0.9;
-    if (bg) { const s = bg.cfg.scale || 40 / bg.img.height; tiled(bg.img, bg.img.width * s, bg.img.height * s, sim.scroll * (bg.cfg.speed ?? 0.5), 146 - bg.img.height * s); }
-    else tiled(TEX.arbustos, 128, 40, sim.scroll / 2, 106);
+    if (P.filter && !bg) ctx.filter = P.filter;
+    if (bg) { const sc = bg.cfg.scale || 40 / bg.img.height; tiled(bg.img, bg.img.width * sc, bg.img.height * sc, sim.scroll * (bg.cfg.speed ?? 0.4), FLOOR_Y + 8 - bg.img.height * sc); }
+    else tiled(TEX.arbustos, 128, 40, sim.scroll * 0.4, FLOOR_Y - 32);
     ctx.restore();
+    if (gr) { // chão da pasta de sprites: colado na base, de ponta a ponta
+      const sc = gr.cfg.scale || 64 / gr.img.height;
+      tiled(gr.img, gr.img.width * sc, gr.img.height * sc, sim.scroll * (gr.cfg.speed ?? 1), 200 - gr.img.height * sc);
+      return;
+    }
+    // piso em perspectiva, linha a linha
+    const tex = floorTex(state.zone);
+    for (let r = 0; r < FLOOR_H; r++) {
+      const t = r / (FLOOR_H - 1);
+      const w = 64 * (1.3 + 1.1 * t);
+      tiled(tex, w, 1.6, sim.scroll * (0.55 + 0.45 * t), FLOOR_Y + r, Math.min(15, Math.floor(t * 16)), 1);
+    }
+    const sh = ctx.createLinearGradient(0, FLOOR_Y, 0, FRONT_Y);
+    sh.addColorStop(0, 'rgba(10,12,14,.38)'); sh.addColorStop(0.55, 'rgba(10,12,14,.06)'); sh.addColorStop(1, 'rgba(10,12,14,0)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(0, FLOOR_Y, groundW, FLOOR_H);
+    // beirada: terra (parte de baixo da textura do design), luz na quina e sombra embaixo dela
     ctx.save();
-    ctx.beginPath();
-    const y = 136, w = fieldW;
-    ctx.moveTo(0, y + 12); ctx.lineTo(6, y + 12); ctx.lineTo(6, y + 6); ctx.lineTo(w - 6, y + 6); ctx.lineTo(w - 6, y + 12);
-    ctx.lineTo(w, y + 12); ctx.lineTo(w, 200); ctx.lineTo(0, 200); ctx.closePath();
-    ctx.clip();
-    if (gr) { const s = gr.cfg.scale || 64 / gr.img.height; tiled(gr.img, gr.img.width * s, gr.img.height * s, sim.scroll * (gr.cfg.speed ?? 1), 200 - gr.img.height * s); }
-    else tiled(TEX.chao, 128, 64, sim.scroll, y);
+    if (P.filter) ctx.filter = P.filter;
+    tiled(TEX.chao, 128, 44, sim.scroll, FRONT_Y, 10, 22);
     ctx.restore();
+    ctx.fillStyle = P.hi; ctx.fillRect(0, FRONT_Y - 2, groundW, 2);
+    ctx.fillStyle = 'rgba(10,12,14,.45)'; ctx.fillRect(0, FRONT_Y, groundW, 2);
+    if (P.lava) { ctx.fillStyle = '#e0703a'; ctx.fillRect(0, 196, groundW, 4); ctx.fillStyle = '#f8b048'; ctx.fillRect(0, 196, groundW, 1); }
+  }
+
+  /** Quem anda atrás do líder (e onde), conforme "só o líder" / "equipe toda". */
+  function mates(lead) {
+    if (state.settings.showTeam === false) return [];
+    return state.team.filter((c) => c !== lead).map((c, i) => ({ c, x: leadX - GAP * (i + 1) - (i === 0 ? 2 : 0) })).filter((m) => m.x > -BOX);
+  }
+
+  const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
+  /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
+  function headBars(x, c, isLead) {
+    const bx = Math.round(x + BOX / 2 - 17), by = FEET - BOX_H - 10;
+    const r = G.clamp(c.hp / G.maxHp(c), 0, 1);
+    ctx.fillStyle = '#0a0c0e'; ctx.fillRect(bx, by, 34, isLead ? 8 : 5);
+    ctx.fillStyle = '#12161a'; ctx.fillRect(bx + 1, by + 1, 32, 3);
+    ctx.fillStyle = hpColor(r); ctx.fillRect(bx + 1, by + 1, Math.round(32 * r), 3);
+    if (!isLead) return;
+    const xp = G.clamp(c.xp / G.xpToNext(c.level), 0, 1);
+    ctx.fillStyle = '#12161a'; ctx.fillRect(bx + 1, by + 5, 32, 2);
+    ctx.fillStyle = '#5a8ed0'; ctx.fillRect(bx + 1, by + 5, Math.round(32 * xp), 2);
+    const st = c.status && G.STATUS[c.status];
+    const label = `NV${c.level}`;
+    if (!st) { text(label, bx + 17, by - 12, { size: 8, color: '#e0a040' }); return; }
+    const lw = measure(label, 8), tw = 16, x0 = Math.round(bx + 17 - (lw + 3 + tw) / 2);
+    text(label, x0, by - 12, { size: 8, color: '#e0a040', align: 'left' });
+    ctx.fillStyle = '#0a0c0e'; ctx.fillRect(x0 + lw + 3, by - 12, tw, 9);
+    ctx.fillStyle = st.color; ctx.fillRect(x0 + lw + 4, by - 11, tw - 2, 7);
+    ctx.fillStyle = '#0a0c0e'; ctx.font = '6px Silkscreen, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(st.short.slice(0, 3).toUpperCase(), x0 + lw + 3 + tw / 2, by - 10);
   }
 
   /** Faísca em "+" de 4 px (captura). */
@@ -668,9 +745,6 @@
     ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * k * FX, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, fieldW, 200);
-    ctx.clip();
     drawGround();
     if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
 
@@ -678,20 +752,20 @@
     const walking = sim.phase === 'walk';
     const tick = Math.floor(sim.anim * 8);
     const resting = sim.phase === 'rest';
-    const others = state.team.filter((c) => c !== lead);
-    others.forEach((c, i) => {
-      const x = leadX - GAP * (i + 1) - (i === 0 ? 2 : 0);
-      if (x < -BOX) return;
+    const team = mates(lead);
+    team.forEach(({ c, x }, i) => {
       const still = A.creature(c.species, c.shiny).frames > 1;
       const dy = still ? 0 : walking ? ((tick + i + 1) % 2 === 0 ? -3 : 0) : (((tick >> 2) + i + 1) % 2 === 0 ? -1 : 0);
       sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
+      headBars(x, c, false);
     });
     const animated = A.creature(lead.species, lead.shiny).frames > 1;
     const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -3 : 0) : ((tick >> 2) % 2 === 0 ? -1 : 0);
     sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
       dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1,
     });
-    if (resting) text('Z', leadX + BOX - 8 + Math.sin(sim.t * 3) * 2, 96 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
+    headBars(leadX + lungeOffset('lead'), lead, true);
+    if (resting) text('Z', leadX + BOX - 4 + Math.sin(sim.t * 3) * 2, 104 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
     if (sim.flash > 0) {
       ctx.globalAlpha = sim.flash;
       ctx.fillStyle = '#fff';
@@ -794,7 +868,7 @@
     const over = cursor && hitTest(cursor.x, cursor.y);
     const v = {
       width: W, height: H, starter: !state.starterChosen || !lead, collapsed: st.collapsed, cardClosed: st.cardClosed,
-      card: st.card, fieldW, caps, auto: G.isAuto(state), hot: over && over !== 'lead' && over !== 'wild' ? over : null,
+      card: st.card, fieldW, caps, auto: G.isAuto(state), hot: over && !['lead', 'wild', 'drag'].includes(over) && !over.startsWith('mon:') ? over : null,
       tag: null, bubbles: [], prompt: null, toast: null,
     };
     if (v.starter) return v;
@@ -851,15 +925,24 @@
     if (!state.starterChosen || state.settings.collapsed) return null;
     // bichos no campo; o chão e os arbustos servem pra arrastar; o céu deixa o clique passar
     const fx = x / k - FX, fy = y / k;
-    if (fx < 0 || fx > fieldW) return null;
-    if (fy >= FEET - BOX_H - 4 && fy <= FEET + 4) {
+    if (fx < 0 || fx > groundW) return null;
+    if (fy >= FEET - BOX_H - 12 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
       if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
       if (sim.wild && ['fight', 'down'].includes(sim.phase) && fx >= sim.wildX + 6 && fx <= sim.wildX + BOX - 6) return 'wild';
+      const lead = G.getLead(state);
+      const m = lead && mates(lead).find((mm) => fx >= mm.x + 10 && fx <= mm.x + BOX - 10);
+      if (m) return `mon:${m.c.uid}`;
     }
-    return fy >= 108 ? 'drag' : null;
+    return fy >= FLOOR_Y - 18 ? 'drag' : null;
   }
   // onde dá pra arrastar a faixa: ficha do líder (e a barrinha recolhida) e o chão
   const DRAG_HITS = new Set(['hud', 'drag']);
+  // clicar num bicho abre os painéis com ele escolhido (o STATUS mostra ele)
+  function openWith(uid) {
+    try { localStorage.setItem('taskmon-sel', JSON.stringify(uid)); } catch { /* sem storage */ }
+    if (bridge.selectCreature) bridge.selectCreature(uid);
+    bridge.openPanel('trio');
+  }
 
   // Liga/desliga o "clique atravessa" conforme o que está embaixo do cursor.
   // A posição vem SÓ do mousemove da página (coordenadas exatas). A posição do sistema que o main
@@ -900,7 +983,9 @@
     if (now - lastAction < 400) return;
     lastAction = now;
     const st = state.settings;
-    if (hit === 'hud' || hit === 'lead') bridge.openPanel(state.starterChosen ? 'trio' : undefined);
+    if (hit === 'hud') bridge.openPanel(state.starterChosen ? 'trio' : undefined);
+    if (hit === 'lead') openWith(state.lead);
+    if (hit.startsWith('mon:')) openWith(hit.slice(4));
     if (hit.startsWith('menu:')) bridge.openPanel(hit.slice(5));
     if (hit === 'collapse' || hit === 'expand') st.collapsed = hit === 'collapse';
     if (hit === 'card:close' || hit === 'card:open') st.cardClosed = hit === 'card:close';
@@ -997,6 +1082,7 @@
         if ('collapsed' in cmd) state.settings.collapsed = !!cmd.collapsed;
         if ('cardClosed' in cmd) state.settings.cardClosed = !!cmd.cardClosed;
         if (['bichos', 'ovo', 'hoje'].includes(cmd.card)) state.settings.card = cmd.card;
+        if ('showTeam' in cmd) state.settings.showTeam = !!cmd.showTeam;
         break;
       case 'catchAnswer':
         answerCatch(cmd.yes);

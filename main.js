@@ -527,6 +527,12 @@ function buildTrayMenu() {
       })),
     },
     {
+      label: 'Mostrar a equipe toda',
+      type: 'checkbox',
+      checked: !lastState || !lastState.settings || lastState.settings.showTeam !== false,
+      click: (item) => { if (alive(strip)) strip.webContents.send('cmd', { type: 'stripUi', showTeam: item.checked }); },
+    },
+    {
       label: 'Voltar pra posição padrão',
       click: () => { config.offsetX = DEFAULT_CONFIG.offsetX; config.offsetY = 0; config.displayId = null; saveConfig(); placeStrip({ force: true }); },
     },

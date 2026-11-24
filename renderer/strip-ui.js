@@ -1,4 +1,4 @@
-// Camada HTML da faixa B2 (design "Taskmon · interface retrô", Layout B): ficha do líder, botões,
+// Camada HTML da faixa B2 (design "Taskmon · interface retrô", Layout B): botões,
 // card da direita (bichos da área / ovo / hoje), etiqueta de HP do selvagem, balões, pergunta de
 // captura e o modo recolhido. Chão e bichos ficam no canvas (strip.js).
 // Tudo em px do design (800×200); o #ui é ampliado com zoom = altura da janela / 200.
@@ -32,16 +32,6 @@
     ui.id = 'ui';
     ui.innerHTML = `
       <div id="full">
-        <section id="lead" data-hit="hud" aria-label="Líder da equipe" title="Equipe">
-          <span class="cnr tl"></span><span class="cnr br"></span>
-          <div id="portrait-box"><div class="gnd"></div><canvas id="portrait" class="px" width="64" height="48"></canvas></div>
-          <div class="info">
-            <span id="l-name" class="sh"></span>
-            <span id="l-lv" class="ss"><span id="l-lvt"></span><span id="l-g"></span><span class="st hide" id="l-st"></span></span>
-            <div class="stack"><span class="lbl8 ss" id="l-hpt"></span><div class="bar6"><i id="l-hp"></i></div></div>
-            <div class="stack"><span class="lbl8 ss">EXP <span id="l-xpg" style="color:#e0a040"></span></span><div class="bar4"><i id="l-xp" style="background:#5a8ed0"></i></div></div>
-          </div>
-        </section>
         <div id="field">
           <div id="tag" class="hide"><div class="row ss"><span id="t-name" style="color:#ead9b0"></span><span id="t-lv" style="color:#e0a040"></span></div><div class="bar5"><i id="t-hp"></i></div></div>
           <div id="bubbles"></div>
@@ -119,20 +109,6 @@
   }
 
   // ---------- partes ----------
-  function lead(L) {
-    text('l-name', 'ln', L.name);
-    text('l-lvt', 'llv', `NV${L.lv}`);
-    set('l-g', 'lg', L.g || '', (el, g) => { el.textContent = g === 'F' ? '♀' : g === 'M' ? '♂' : ''; el.style.color = g === 'F' ? '#e88aa0' : '#8ab8e8'; el.style.fontFamily = 'sans-serif'; });
-    set('l-st', 'lst', L.st ? L.st.short : '', (el) => { el.classList.toggle('hide', !L.st); if (L.st) { el.textContent = L.st.short; el.style.background = L.st.color; } });
-    const r = L.max ? L.hp / L.max : 0;
-    text('l-hpt', 'lhpt', `HP ${Math.ceil(L.hp)}/${L.max}`);
-    bar('l-hp', 'lhp', r, '#6f9a4a');
-    bar('l-xp', 'lxp', L.xp, '#5a8ed0');
-    text('l-xpg', 'lxpg', L.xpGain ? `+${L.xpGain}` : '');
-    set('portrait', 'portrait', `${L.species}:${L.shiny}:${A.version}`, (el) => drawSprite(el, L.species, L.shiny, 64, 48));
-    set('portrait', 'pop', L.blink ? 0.35 : L.resting ? 0.5 : 1, (el, x) => { el.style.opacity = x; });
-  }
-
   function mini(v) {
     const L = v.lead;
     text('m-name', 'mn', L.name.toUpperCase());
@@ -249,7 +225,6 @@
 
     if (mode === 'mini') { mini(v); hot(v.hot); return; }
 
-    lead(v.lead);
     set('field', 'fw', v.fieldW, (el, x) => { el.style.width = `${x}px`; });
     show('card', 'cardo', !v.cardClosed);
     show('card-mini', 'cardc', v.cardClosed);

@@ -39,7 +39,7 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 ## Como jogar
 
 - **Painéis** (botão da faixa): abre STATUS, EQUIPE e MAPA lado a lado; clique de novo pra fechar.
-  Clicar na ficha do líder ou no seu bicho também abre. **Mochila** abre a EQUIPE.
+  Clicar num bicho da faixa também abre, já com ele escolhido no STATUS. **Mochila** abre a EQUIPE.
 - **Clique no selvagem** durante a luta pra lançar uma cápsula. Quanto menos HP ele tiver, maior a chance.
 - **Captura** acontece **depois de derrotar** o selvagem (ele fica caído uns segundos). Modos (⚙ Ajustes):
   *espécies novas e brilhantes* (padrão) e *capturar todos* lançam sozinhos e tentam até 3 vezes;
@@ -51,7 +51,7 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Soltar** (Baú): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
   ligue **MARCAR** e clique nos bichos (ou "Marcar filtro") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
-- **Arraste a faixa** pela ficha do líder, pelo chão ou pela barrinha recolhida, pra qualquer lugar
+- **Arraste a faixa** pelo chão ou pela barrinha recolhida, pra qualquer lugar
   (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho.
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
   (50% a 150%, padrão 75%), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
@@ -139,8 +139,10 @@ Naturezas e itens ficam em `shared/items.js`.
 Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout B).
 
 - **Faixa B2**: um overlay transparente de 800×200 em px do design (em 75% por padrão), encostado na
-  barra de tarefas até você arrastar pra outro lugar. Só aparecem a ficha do líder (retrato, NV, HP, EXP), o chão
-  de terra com arbustos rolando, a **equipe inteira andando em fila**, os botões **Recolher**, **Painéis**
+  barra de tarefas até você arrastar pra outro lugar. Só aparecem o chão (de ponta a ponta, piso em
+  perspectiva com a beirada de terra na frente, cores por zona) com arbustos rolando, a **equipe inteira
+  andando em fila** (ou só o líder: Ajustes ou bandeja) com barrinhas de HP em cima da cabeça (o líder
+  também tem NV e EXP), os botões **Recolher**, **Painéis**
   e **Mochila** e o card da direita; fora deles o clique passa pra área de trabalho.
   - Balões em cima dos bichos: "!" no encontro, o nome do golpe, "· · ·" na cápsula, PEGOU!, +EXP,
     ESCAPOU!, FUGIU!. Na luta aparece a etiqueta de HP do selvagem e os números de dano.

@@ -537,6 +537,7 @@
         <div class="setrow"><span class="t"><b>Comprar cápsulas sozinho</b><small>Compra 5 quando acabam</small></span>${tg('autoBuy', s.autoBuy)}</div>
         <div class="setrow"><span class="t"><b>Aprender golpes sozinho</b><small>Troca o mais fraco por um melhor</small></span>${tg('autoMoves', s.autoMoves !== false)}</div>
         <div class="setrow"><span class="t"><b>Som</b><small>Grito dos bichos na Dex</small></span>${tg('mute', !store.get('taskmon-mute', false))}</div>
+        <div class="setrow"><span class="t"><b>Equipe toda na faixa</b><small>Desligado: só o líder anda</small></span>${tg('showTeam', s.showTeam !== false)}</div>
         <div class="setrow"><span class="t"><b>Faixa recolhida</b><small>Só a barrinha com o líder</small></span>${tg('collapse', s.collapsed)}</div>
         <div class="setrow"><span class="t"><b>Sprites e tiles</b><small>${A.list().length} arquivo(s) customizado(s)</small></span><button class="pk sm" data-cmd="openSprites">PASTA</button><button class="pk sm" data-cmd="reloadSprites">RECARREGAR</button></div>
         <div class="setrow"><span class="t"><b>Estatísticas</b><small>${state.stats.wins} vitórias · ${state.stats.battles} batalhas · ${state.stats.caught} capturas${state.stats.hatched ? ` · ${state.stats.hatched} ovos` : ''}</small></span></div>
@@ -783,6 +784,7 @@
       case 'autoBuy': send({ type: 'autoBuy', value: !state.settings.autoBuy }); break;
       case 'autoMoves': send({ type: 'autoMoves', value: state.settings.autoMoves === false }); break;
       case 'collapse': send({ type: 'stripUi', collapsed: !state.settings.collapsed }); break;
+      case 'showTeam': send({ type: 'stripUi', showTeam: state.settings.showTeam === false }); break;
       case 'openSprites': bridge.openSpritesFolder(); break;
       case 'reloadSprites': bridge.reloadAssets(); break;
       case 'reset': if (confirm('Apagar todo o progresso e começar de novo?')) send({ type: 'reset' }); break;
