@@ -78,6 +78,8 @@
     onDragEnd: (cb) => { (listeners.dragEnd = listeners.dragEnd || []).push(cb); },
     stripScale: () => {},
     stripWidth: () => {},
+    // ?mirror=1 na URL testa a faixa espelhada (lado direito da tela)
+    onSide: (cb) => setTimeout(() => cb(new URLSearchParams(location.search).get('mirror') === '1'), 0),
     loadAssets,
     onAssetsChanged: (cb) => listeners.assets.push(cb),
     openSpritesFolder: () => alert('No navegador, coloque os PNGs em assets/sprites/ e recarregue.'),

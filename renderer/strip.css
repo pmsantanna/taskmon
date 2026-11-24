@@ -95,3 +95,9 @@ dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-si
 
 /* antes de escolher o inicial */
 #starter { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 10px 14px; background: #12161a; border: 2px solid #0a0c0e; box-shadow: inset 0 3px 0 #e0a040, 4px 4px 0 rgba(10,12,14,.35); font-size: 15px; white-space: nowrap; }
+
+/* espelhada (faixa no lado direito da tela): botões e card à esquerda */
+#ui.mirror #tools { right: auto; left: 4px; }
+#ui.mirror #card, #ui.mirror #card-mini { right: auto; left: 0; }
+#ui.mirror #card-close { left: auto; right: -18px; border-right: 2px solid #0a0c0e; border-left: 0; }
+#ui.mirror #card-close svg, #ui.mirror #card-mini .cbtn svg { transform: scaleX(-1); }

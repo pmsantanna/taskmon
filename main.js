@@ -66,7 +66,10 @@ function stripBounds() {
   // a faixa pede a largura que precisa (líder sozinho = mais estreita); config.width é o máximo
   const dw = Math.min(config.width, wantWidth || config.width);
   const width = Math.round(Math.min(dw * (height / STRIP_H), wa.width));
-  const x = wa.x + Math.max(0, Math.min(config.offsetX, wa.width - width));
+  // presa na borda esquerda (cresce pra direita) ou, passando do meio da tela, na direita
+  const x = config.anchor === 'right'
+    ? wa.x + Math.max(0, wa.width - width - Math.max(0, config.offsetR || 0))
+    : wa.x + Math.max(0, Math.min(config.offsetX, wa.width - width));
   const up = Math.max(0, Math.min(config.offsetY || 0, wa.height - height));
   return { x: Math.round(x), y: Math.round(wa.y + wa.height - height - up), width, height };
 }
@@ -91,6 +94,7 @@ function placeStrip({ force = false } = {}) {
     if (force) strip.setBounds({ ...want, width: want.width + 1 });
     strip.setBounds(want);
     strip.webContents.send('strip:relayout');
+    strip.webContents.send('strip:side', config.anchor === 'right'); // do lado direito a faixa espelha
   };
   apply();
   placeTimers = [120, 400, 1200].map((ms) => setTimeout(apply, ms));
@@ -131,6 +135,8 @@ function dragEnd() {
     const wa = d.workArea;
     config.displayId = d.id === screen.getPrimaryDisplay().id ? null : d.id;
     config.offsetX = Math.max(0, Math.round(b.x - wa.x));
+    config.offsetR = Math.max(0, Math.round(wa.x + wa.width - (b.x + b.width)));
+    config.anchor = b.x + b.width / 2 > wa.x + wa.width / 2 ? 'right' : 'left';
     config.offsetY = Math.max(0, Math.round(wa.y + wa.height - (b.y + b.height)));
     saveConfig();
     placeStrip({ force: true }); // encaixa dentro da área útil (e acerta o tamanho no monitor novo)
@@ -251,6 +257,7 @@ function createStrip() {
   strip.setAlwaysOnTop(true, 'screen-saver', 1);
   strip.setIgnoreMouseEvents(true, { forward: true });
   strip.loadFile(path.join(__dirname, 'renderer', 'strip.html'));
+  strip.webContents.on('did-finish-load', () => strip.webContents.send('strip:side', config.anchor === 'right'));
   strip.once('ready-to-show', () => {
     strip.showInactive();
     placeStrip({ force: true });
@@ -503,6 +510,7 @@ function watchUserSprites() {
 // ---------- Bandeja ----------
 function moveBy(dx) {
   config.offsetX = Math.max(0, config.offsetX + dx);
+  config.offsetR = Math.max(0, (config.offsetR || 0) - dx);
   saveConfig();
   placeStrip();
 }
@@ -537,7 +545,7 @@ function buildTrayMenu() {
     },
     {
       label: 'Voltar pra posição padrão',
-      click: () => { config.offsetX = DEFAULT_CONFIG.offsetX; config.offsetY = 0; config.displayId = null; saveConfig(); placeStrip({ force: true }); },
+      click: () => { config.offsetX = DEFAULT_CONFIG.offsetX; config.offsetY = 0; config.anchor = 'left'; config.displayId = null; saveConfig(); placeStrip({ force: true }); },
     },
     {
       label: 'Monitor',

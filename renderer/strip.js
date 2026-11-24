@@ -21,7 +21,11 @@
   const BOX = 64;          // caixa de cada bicho (64×48, sprite 12×12 em 4×)
   const BOX_H = 48;
   const GAP = 52;          // distância entre os bichos da fila
-  const SCENE_DY = 24;     // a cena (chão, bichos, balões) fica 24 px mais baixa: mais céu, menos terra
+  const SCENE_DY = 24;
+  // Do lado direito da tela a faixa espelha: card e botões à esquerda, a equipe anda pra esquerda.
+  // As contas são feitas sempre "normais" (x lógico) e só o desenho e o clique são espelhados.
+  let mirror = false, mirrorText = false;
+  bridge.onSide && bridge.onSide((m) => { mirror = !!m; });     // a cena (chão, bichos, balões) fica 24 px mais baixa: mais céu, menos terra
   let W = 0, H = 0, k = 1, DW = 800, fieldW = 652, groundW = 800, leadX = 370, wildTargetX = 480;
   let dpr = 1;
 
@@ -61,9 +65,12 @@
     // parte visível do chão (o card da direita cobre o resto); a fila inteira cabe atrás do líder
     fieldW = Math.max(200, Math.round(DW - (state.settings.cardClosed ? 48 : 148)));
     const n = state.settings.showTeam === false ? 1 : state.team.length;
-    leadX = 40 + GAP * (n - 1); // a fila começa perto da borda esquerda
-    // largura que a faixa precisa (sem sobrar chão vazio atrás do líder quando ele anda sozinho)
-    const need = Math.round(leadX + 110 + BOX + 34 + (state.settings.cardClosed ? 48 : 148));
+    // largura que a faixa precisa (sem sobrar chão vazio atrás do líder quando ele anda sozinho),
+    // mais 25% de chão atrás da fila
+    const base = 40 + GAP * (n - 1) + 110 + BOX + 34;
+    const extra = Math.round(base * 0.25);
+    leadX = 40 + extra + GAP * (n - 1);
+    const need = base + extra + (state.settings.cardClosed ? 48 : 148);
     if (need !== layout.need) { layout.need = need; if (bridge.stripWidth) bridge.stripWidth(need); }
     wildTargetX = Math.min(fieldW - BOX + 4, leadX + 110);
     if (sim && sim.wild && FIGHTING.includes(sim.phase)) sim.wildX = wildTargetX;
@@ -583,11 +590,21 @@
     ctx.textAlign = align;
     ctx.textBaseline = 'top';
     x = Math.round(x); y = Math.round(y);
-    ctx.fillStyle = '#0a0c0e';
-    const o = size <= 10 ? 1 : 2; // texto pequeno: contorno de 1 px (2 px borra)
-    for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o], [o, o]]) ctx.fillText(str, x + dx, y + dy);
-    ctx.fillStyle = color;
-    ctx.fillText(str, x, y);
+    unflip(x, () => {
+      ctx.fillStyle = '#0a0c0e';
+      const o = size <= 10 ? 1 : 2; // texto pequeno: contorno de 1 px (2 px borra)
+      for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o], [o, o]]) ctx.fillText(str, x + dx, y + dy);
+      ctx.fillStyle = color;
+      ctx.fillText(str, x, y);
+    });
+  }
+  /** Com a cena espelhada, desvira o texto em volta de x (senão as letras saem ao contrário). */
+  function unflip(x, fn) {
+    if (!mirrorText) return fn();
+    ctx.save();
+    ctx.translate(x, 0); ctx.scale(-1, 1); ctx.translate(-x, 0);
+    fn();
+    ctx.restore();
   }
 
   function measure(str, size = 14) {
@@ -704,7 +721,8 @@
     ctx.fillStyle = '#0a0c0e'; ctx.fillRect(x0 + lw + 3, by - 12, tw, 9);
     ctx.fillStyle = st.color; ctx.fillRect(x0 + lw + 4, by - 11, tw - 2, 7);
     ctx.fillStyle = '#0a0c0e'; ctx.font = '6px Silkscreen, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(st.short.slice(0, 3).toUpperCase(), x0 + lw + 3 + tw / 2, by - 10);
+    const cx = x0 + lw + 3 + tw / 2;
+    unflip(cx, () => ctx.fillText(st.short.slice(0, 3).toUpperCase(), cx, by - 10));
   }
 
   /** Faísca em "+" de 4 px (captura). */
@@ -748,6 +766,8 @@
     ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * k * FX, dpr * k * SCENE_DY);
     ctx.imageSmoothingEnabled = false;
     ctx.save();
+    if (mirror) { ctx.translate(DW, 0); ctx.scale(-1, 1); }
+    mirrorText = mirror;
     drawGround();
     if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
 
@@ -806,6 +826,7 @@
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+    mirrorText = false;
 
     if (debug && debug.on) {
       const hit = cursor ? hitTest(cursor.x, cursor.y) : null;
@@ -872,8 +893,9 @@
     const v = {
       width: W, height: H, starter: !state.starterChosen || !lead, collapsed: st.collapsed, cardClosed: st.cardClosed,
       card: st.card, fieldW, caps, auto: G.isAuto(state), hot: over && !['lead', 'wild', 'drag'].includes(over) && !over.startsWith('mon:') ? over : null,
-      tag: null, bubbles: [], prompt: null, toast: null,
+      tag: null, bubbles: [], prompt: null, toast: null, mirror, fieldX0: mirror ? Math.round(DW - fieldW) : 0,
     };
+    const fxp = (x) => (mirror ? fieldW - x : x); // x lógico -> x dentro do campo (espelhado ou não)
     if (v.starter) return v;
     const tick = Math.floor(sim.anim * 8);
     v.lead = {
@@ -895,18 +917,18 @@
 
     const w = sim.wild;
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
-      v.tag = { x: Math.round(sim.wildX - 4), y: 88 + SCENE_DY, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
+      v.tag = { x: Math.round(mirror ? fieldW - (sim.wildX - 4) - 72 : sim.wildX - 4), y: 88 + SCENE_DY, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
     }
     const cp = capsulePos();
     for (const [who, b] of Object.entries(sim.bubbles)) {
       if (who === 'wild' && !w) continue;
       if (who === 'lead' && sim.phase === 'prompt') continue; // a pergunta fica por cima dele
       const x = who === 'lead' ? leadX + 24 : who === 'cap' ? (cp ? cp.x + 12 : wildTargetX + BOX / 2) : sim.wildX + 28;
-      v.bubbles.push({ id: who, text: b.text, accent: b.accent, color: b.color, x, y: (b.y ?? BUBBLE_Y[who]) + SCENE_DY });
+      v.bubbles.push({ id: who, text: b.text, accent: b.accent, color: b.color, x: fxp(x), y: (b.y ?? BUBBLE_Y[who]) + SCENE_DY });
     }
     if (sim.phase === 'prompt' && w) {
       v.prompt = {
-        x: sim.wildX + 28, y: 12 + SCENE_DY,
+        x: fxp(sim.wildX + 28), y: 12 + SCENE_DY,
         q: sim.prompt === 'retry' ? 'Tentar outra?' : 'Capturar?',
         who: `${G.SPECIES[w.species].name.toUpperCase()} NV${w.level}`,
         frac: Math.max(0, 1 - sim.t / PROMPT_S),
@@ -927,7 +949,9 @@
     if (ui) return ui;
     if (!state.starterChosen || state.settings.collapsed) return null;
     // bichos no campo; o chão e os arbustos servem pra arrastar; o céu deixa o clique passar
-    const fx = x / k - FX, fy = y / k - SCENE_DY;
+    let fx = x / k - FX;
+    const fy = y / k - SCENE_DY;
+    if (mirror) fx = DW - fx;
     if (fx < 0 || fx > groundW) return null;
     if (fy >= FEET - BOX_H - 12 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
       if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
@@ -1032,7 +1056,7 @@
     bridge.stripScale(e.deltaY < 0 ? 1 : -1);
   }, { passive: false });
   // só leitura, pra diagnóstico/testes: o que está embaixo de um ponto da faixa
-  window.__taskmon = { hit: (x, y) => hitTest(x, y) };
+  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'direita' : 'esquerda') };
   bridge.onPress((p) => {
     if (DRAG_HITS.has(hitTest(p.x, p.y))) startDrag(p.x, p.y);
     else act(p.x, p.y, 'windows');

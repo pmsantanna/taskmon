@@ -226,6 +226,8 @@
     if (mode === 'mini') { mini(v); hot(v.hot); return; }
 
     set('field', 'fw', v.fieldW, (el, x) => { el.style.width = `${x}px`; });
+    set('field', 'fl', v.fieldX0 || 0, (el, x) => { el.style.left = `${x}px`; });
+    set('ui', 'mir', !!v.mirror, (el, x) => el.classList.toggle('mirror', x));
     show('card', 'cardo', !v.cardClosed);
     show('card-mini', 'cardc', v.cardClosed);
     card(v);

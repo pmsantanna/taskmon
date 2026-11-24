@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('bridge', {
   onDragEnd: (cb) => ipcRenderer.on('strip:dragEnd', (_e, r) => cb(r)),
   stripScale: (dir) => ipcRenderer.send('strip:scale', dir),
   stripWidth: (w) => ipcRenderer.send('strip:width', w),
+  onSide: (cb) => ipcRenderer.on('strip:side', (_e, mirror) => cb(mirror)),
   // sprites customizados
   loadAssets: () => ipcRenderer.invoke('assets:load'),
   onAssetsChanged: (cb) => ipcRenderer.on('assets:changed', () => cb()),
