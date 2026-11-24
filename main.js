@@ -26,7 +26,7 @@ const USER_SPRITES = () => userFile('sprites');
 // Só a ficha, o chão, os bichos e os cards aparecem; o resto deixa o clique passar.
 const STRIP_H = 200;
 const DEFAULT_CONFIG = {
-  width: 800,      // largura em px do design (escala 100%)
+  width: 760,      // largura em px do design (escala 100%); cresce se a equipe não couber
   scale: 0.75,     // tamanho: 1 = 1:1 com o design (Ctrl + roda do mouse em cima da faixa muda)
   offsetX: 230,    // distância da borda esquerda da área útil
   offsetY: 0,      // distância da borda de baixo da área útil (0 = encostada na barra de tarefas)
@@ -63,8 +63,8 @@ function stripBounds() {
   // fica em cima da área útil, encostada na barra de tarefas (sem brigar com ela pelo topo)
   const s = config.scale || DEFAULT_CONFIG.scale;
   const height = Math.round(Math.min(STRIP_H * s, wa.height / 3));
-  // a faixa pede a largura que precisa (líder sozinho = mais estreita); config.width é o máximo
-  const dw = Math.min(config.width, wantWidth || config.width);
+  // largura da bandeja; a faixa pede mais se a equipe inteira não couber
+  const dw = Math.max(config.width, wantWidth || 0);
   const width = Math.round(Math.min(dw * (height / STRIP_H), wa.width));
   // presa na borda esquerda (cresce pra direita) ou, passando do meio da tela, na direita
   const x = config.anchor === 'right'
@@ -524,8 +524,8 @@ function buildTrayMenu() {
     { label: '← Mover para a esquerda', click: () => moveBy(-60) },
     { label: '→ Mover para a direita', click: () => moveBy(60) },
     {
-      label: 'Largura máxima',
-      submenu: [680, 800, 1000, 1200].map((w) => ({
+      label: 'Largura',
+      submenu: [560, 680, 760, 900, 1100].map((w) => ({
         label: `${w}px`, type: 'radio', checked: config.width === w,
         click: () => { config.width = w; saveConfig(); placeStrip({ force: true }); },
       })),
@@ -640,6 +640,7 @@ ipcMain.on('assets:reload', broadcastAssetsChanged);
 app.whenReady().then(() => {
   config = { ...DEFAULT_CONFIG, ...readJson(CONFIG_FILE(), {}) };
   if (!config.layoutB) { config.width = 800; config.layoutB = true; delete config.mode; } // faixa nova (Layout B2)
+  if (!config.sizeV3) { config.width = DEFAULT_CONFIG.width; config.sizeV3 = true; } // largura tipo TaskBarHero
   if (!config.sizeV2) { if (!config.scale || config.scale === 1) config.scale = DEFAULT_CONFIG.scale; config.sizeV2 = true; } // 100% ficou grande
   createStrip();
   createTray();

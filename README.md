@@ -55,7 +55,7 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho.
   Passando do meio da tela, ela espelha (card e botões à esquerda, a equipe anda pra esquerda) e fica
   presa na borda direita: quando cresce (equipe maior), cresce pra esquerda.
-- **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura máxima, tamanho
+- **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
   (50% a 150%, padrão 75%), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
 - **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. No STATUS, **TROCAR** escolhe os
@@ -140,7 +140,7 @@ Naturezas e itens ficam em `shared/items.js`.
 
 Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout B).
 
-- **Faixa B2**: um overlay transparente de 800×200 em px do design (em 75% por padrão), encostado na
+- **Faixa B2**: um overlay transparente de 760×200 em px do design (em 75% por padrão; largura na bandeja), encostado na
   barra de tarefas até você arrastar pra outro lugar. Só aparecem o chão (de ponta a ponta, piso em
   perspectiva com a beirada de terra na frente, cores por zona) com arbustos rolando, a **equipe inteira
   andando em fila** (ou só o líder: Ajustes ou bandeja) com barrinhas de HP em cima da cabeça (o líder

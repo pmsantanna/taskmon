@@ -65,14 +65,14 @@
     // parte visível do chão (o card da direita cobre o resto); a fila inteira cabe atrás do líder
     fieldW = Math.max(200, Math.round(DW - (state.settings.cardClosed ? 48 : 148)));
     const n = state.settings.showTeam === false ? 1 : state.team.length;
-    // largura que a faixa precisa (sem sobrar chão vazio atrás do líder quando ele anda sozinho),
-    // mais 25% de chão atrás da fila
-    const base = 40 + GAP * (n - 1) + 110 + BOX + 34;
-    const extra = Math.round(base * 0.25);
-    leadX = 40 + extra + GAP * (n - 1);
-    const need = base + extra + (state.settings.cardClosed ? 48 : 148);
+    // O card passa por cima do chão (não soma na largura) e abrir/fechar ele não mexe na cena:
+    // o selvagem fica logo antes do card aberto, o líder 110 px antes dele e a fila atrás.
+    const CARD = 148;
+    wildTargetX = Math.round(DW - CARD - BOX - 20);
+    leadX = wildTargetX - 110;
+    // largura mínima pra caber a fila inteira (a largura normal vem da bandeja)
+    const need = 24 + GAP * (n - 1) + 110 + BOX + 20 + CARD;
     if (need !== layout.need) { layout.need = need; if (bridge.stripWidth) bridge.stripWidth(need); }
-    wildTargetX = Math.min(fieldW - BOX + 4, leadX + 110);
     if (sim && sim.wild && FIGHTING.includes(sim.phase)) sim.wildX = wildTargetX;
   }
 
@@ -703,20 +703,26 @@
 
   const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
   /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
+  const HP_FILL = (r) => (r < 0.25 ? ['#d04a3a', '#f08a6a'] : r < 0.5 ? ['#e0a040', '#f8d070'] : ['#4cb848', '#8ae07a']);
+  /** Barra com moldura escura e brilho em cima. Espelhada, enche a partir da direita lógica (= esquerda na tela). */
+  function bar(x, y, w, h, r, [base, hi]) {
+    const fw = Math.round(w * r), fx = mirrorText ? x + w - fw : x;
+    ctx.fillStyle = '#12161a'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = base; ctx.fillRect(fx, y, fw, h);
+    if (hi && h > 2) { ctx.fillStyle = hi; ctx.fillRect(fx, y, fw, Math.max(1, Math.floor(h / 3))); }
+  }
+  /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
   function headBars(x, c, isLead) {
-    const bx = Math.round(x + BOX / 2 - 17), by = FEET - BOX_H - 10;
+    const W2 = 42, bx = Math.round(x + BOX / 2 - W2 / 2), by = FEET - BOX_H - 13;
     const r = G.clamp(c.hp / G.maxHp(c), 0, 1);
-    ctx.fillStyle = '#0a0c0e'; ctx.fillRect(bx, by, 34, isLead ? 8 : 5);
-    ctx.fillStyle = '#12161a'; ctx.fillRect(bx + 1, by + 1, 32, 3);
-    ctx.fillStyle = hpColor(r); ctx.fillRect(bx + 1, by + 1, Math.round(32 * r), 3);
+    ctx.fillStyle = '#0a0c0e'; ctx.fillRect(bx, by, W2, isLead ? 12 : 8);
+    bar(bx + 1, by + 1, W2 - 2, 6, r, HP_FILL(r));
     if (!isLead) return;
-    const xp = G.clamp(c.xp / G.xpToNext(c.level), 0, 1);
-    ctx.fillStyle = '#12161a'; ctx.fillRect(bx + 1, by + 5, 32, 2);
-    ctx.fillStyle = '#5a8ed0'; ctx.fillRect(bx + 1, by + 5, Math.round(32 * xp), 2);
+    bar(bx + 1, by + 8, W2 - 2, 3, G.clamp(c.xp / G.xpToNext(c.level), 0, 1), ['#5a8ed0', '#8ab8f0']);
     const st = c.status && G.STATUS[c.status];
     const label = `NV${c.level}`;
-    if (!st) { text(label, bx + 17, by - 12, { size: 8, color: '#e0a040' }); return; }
-    const lw = measure(label, 8), tw = 16, x0 = Math.round(bx + 17 - (lw + 3 + tw) / 2);
+    if (!st) { text(label, bx + W2 / 2, by - 12, { size: 8, color: '#e0a040' }); return; }
+    const lw = measure(label, 8), tw = 16, x0 = Math.round(bx + W2 / 2 - (lw + 3 + tw) / 2);
     text(label, x0, by - 12, { size: 8, color: '#e0a040', align: 'left' });
     ctx.fillStyle = '#0a0c0e'; ctx.fillRect(x0 + lw + 3, by - 12, tw, 9);
     ctx.fillStyle = st.color; ctx.fillRect(x0 + lw + 4, by - 11, tw - 2, 7);
@@ -953,7 +959,7 @@
     const fy = y / k - SCENE_DY;
     if (mirror) fx = DW - fx;
     if (fx < 0 || fx > groundW) return null;
-    if (fy >= FEET - BOX_H - 12 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
+    if (fy >= FEET - BOX_H - 14 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
       if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
       if (sim.wild && ['fight', 'down'].includes(sim.phase) && fx >= sim.wildX + 6 && fx <= sim.wildX + BOX - 6) return 'wild';
       const lead = G.getLead(state);
