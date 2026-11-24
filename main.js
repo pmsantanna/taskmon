@@ -94,7 +94,7 @@ function placeStrip({ force = false } = {}) {
     if (force) strip.setBounds({ ...want, width: want.width + 1 });
     strip.setBounds(want);
     strip.webContents.send('strip:relayout');
-    strip.webContents.send('strip:side', config.anchor === 'right'); // do lado direito a faixa espelha
+    strip.webContents.send('strip:side', stripMirrored()); // card e botões do lado da borda da tela
   };
   apply();
   placeTimers = [120, 400, 1200].map((ms) => setTimeout(apply, ms));
@@ -106,6 +106,9 @@ function placeStrip({ force = false } = {}) {
 // segue o cursor até soltar o botão. Soltou: guarda a posição (relativa à área útil do monitor).
 let drag = null, dragTimer = null;
 let wantWidth = null; // largura (px do design) que a faixa pediu
+// O desenho "normal" da faixa tem o card e os botões à direita. Do lado esquerdo da tela ela espelha,
+// pra que fiquem sempre do lado da borda da tela.
+const stripMirrored = () => config.anchor !== 'right';
 function dragStart() {
   if (drag || !alive(strip)) return;
   const p = screen.getCursorScreenPoint(), b = strip.getBounds();
@@ -257,7 +260,7 @@ function createStrip() {
   strip.setAlwaysOnTop(true, 'screen-saver', 1);
   strip.setIgnoreMouseEvents(true, { forward: true });
   strip.loadFile(path.join(__dirname, 'renderer', 'strip.html'));
-  strip.webContents.on('did-finish-load', () => strip.webContents.send('strip:side', config.anchor === 'right'));
+  strip.webContents.on('did-finish-load', () => strip.webContents.send('strip:side', stripMirrored()));
   strip.once('ready-to-show', () => {
     strip.showInactive();
     placeStrip({ force: true });

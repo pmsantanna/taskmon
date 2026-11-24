@@ -53,8 +53,9 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
 - **Arraste a faixa** pelo chão ou pela barrinha recolhida, pra qualquer lugar
   (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho.
-  Passando do meio da tela, ela espelha (card e botões à esquerda, a equipe anda pra esquerda) e fica
-  presa na borda direita: quando cresce (equipe maior), cresce pra esquerda.
+  O card e os botões ficam sempre do lado da borda da tela: na metade esquerda ela espelha (card à
+  esquerda, a equipe anda pra esquerda); passando do meio, o card vai pra direita e ela fica presa na
+  borda direita (quando cresce, cresce pra esquerda).
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
   (50% a 150%, padrão 75%), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).

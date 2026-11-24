@@ -22,7 +22,7 @@
   const BOX_H = 48;
   const GAP = 52;          // distância entre os bichos da fila
   const SCENE_DY = 24;
-  // Do lado direito da tela a faixa espelha: card e botões à esquerda, a equipe anda pra esquerda.
+  // Do lado esquerdo da tela a faixa espelha: card e botões à esquerda (na borda), a equipe anda pra esquerda.
   // As contas são feitas sempre "normais" (x lógico) e só o desenho e o clique são espelhados.
   let mirror = false, mirrorText = false;
   bridge.onSide && bridge.onSide((m) => { mirror = !!m; });     // a cena (chão, bichos, balões) fica 24 px mais baixa: mais céu, menos terra
@@ -1074,7 +1074,7 @@
     bridge.stripScale(e.deltaY < 0 ? 1 : -1);
   }, { passive: false });
   // só leitura, pra diagnóstico/testes: o que está embaixo de um ponto da faixa
-  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'direita' : 'esquerda') };
+  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'card à esquerda' : 'card à direita') };
   bridge.onPress((p) => {
     if (DRAG_HITS.has(hitTest(p.x, p.y))) startDrag(p.x, p.y);
     else act(p.x, p.y, 'windows');
