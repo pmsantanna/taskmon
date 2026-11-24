@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('bridge', {
   onCursor: (cb) => ipcRenderer.on('strip:cursor', (_e, p) => cb(p)),
   onPress: (cb) => ipcRenderer.on('strip:press', (_e, p) => cb(p)),
   onDebug: (cb) => ipcRenderer.on('strip:debug', (_e, d) => cb(d)),
+  dragStart: () => ipcRenderer.send('strip:dragStart'),
+  dragEnd: () => ipcRenderer.send('strip:dragEnd'),
+  onDragEnd: (cb) => ipcRenderer.on('strip:dragEnd', (_e, r) => cb(r)),
+  stripScale: (dir) => ipcRenderer.send('strip:scale', dir),
   // sprites customizados
   loadAssets: () => ipcRenderer.invoke('assets:load'),
   onAssetsChanged: (cb) => ipcRenderer.on('assets:changed', () => cb()),

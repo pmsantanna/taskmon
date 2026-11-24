@@ -72,6 +72,11 @@
     onCursor: () => {},
     onDebug: () => {},
     onPress: () => {},
+    // no navegador a aba não se mexe: "soltar" sem ter arrastado (vale como clique)
+    dragStart: () => {},
+    dragEnd: () => (listeners.dragEnd || []).forEach((cb) => cb({ moved: false })),
+    onDragEnd: (cb) => { (listeners.dragEnd = listeners.dragEnd || []).push(cb); },
+    stripScale: () => {},
     loadAssets,
     onAssetsChanged: (cb) => listeners.assets.push(cb),
     openSpritesFolder: () => alert('No navegador, coloque os PNGs em assets/sprites/ e recarregue.'),

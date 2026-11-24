@@ -51,8 +51,10 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Soltar** (Baú): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
   ligue **MARCAR** e clique nos bichos (ou "Marcar filtro") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
+- **Arraste a faixa** pela ficha do líder, pelo chão ou pela barrinha recolhida, pra qualquer lugar
+  (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho.
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
-  (100/125/150%), monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
+  (50% a 150%, padrão 75%), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
 - **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. No STATUS, **TROCAR** escolhe os
   ativos; clique num golpe pra ver a descrição e clique de novo pra abrir os detalhes.
@@ -136,8 +138,8 @@ Naturezas e itens ficam em `shared/items.js`.
 
 Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout B).
 
-- **Faixa B2**: um overlay transparente de 800×200 logo acima da barra de tarefas (escala 1:1 com o
-  design; largura e tamanho na bandeja). Só aparecem a ficha do líder (retrato, NV, HP, EXP), o chão
+- **Faixa B2**: um overlay transparente de 800×200 em px do design (em 75% por padrão), encostado na
+  barra de tarefas até você arrastar pra outro lugar. Só aparecem a ficha do líder (retrato, NV, HP, EXP), o chão
   de terra com arbustos rolando, a **equipe inteira andando em fila**, os botões **Recolher**, **Painéis**
   e **Mochila** e o card da direita; fora deles o clique passa pra área de trabalho.
   - Balões em cima dos bichos: "!" no encontro, o nome do golpe, "· · ·" na cápsula, PEGOU!, +EXP,

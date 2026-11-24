@@ -849,23 +849,28 @@
     const ui = StripUI.hit(x, y); // ficha, cards e botões HTML (data-hit)
     if (ui) return ui;
     if (!state.starterChosen || state.settings.collapsed) return null;
-    // bichos no campo (o resto do campo deixa o clique passar pra área de trabalho)
+    // bichos no campo; o chão e os arbustos servem pra arrastar; o céu deixa o clique passar
     const fx = x / k - FX, fy = y / k;
-    if (fx < 0 || fx > fieldW || fy < FEET - BOX_H - 4 || fy > FEET + 4) return null;
-    if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
-    if (sim.wild && ['fight', 'down'].includes(sim.phase) && fx >= sim.wildX + 6 && fx <= sim.wildX + BOX - 6) return 'wild';
-    return null;
+    if (fx < 0 || fx > fieldW) return null;
+    if (fy >= FEET - BOX_H - 4 && fy <= FEET + 4) {
+      if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
+      if (sim.wild && ['fight', 'down'].includes(sim.phase) && fx >= sim.wildX + 6 && fx <= sim.wildX + BOX - 6) return 'wild';
+    }
+    return fy >= 108 ? 'drag' : null;
   }
+  // onde dá pra arrastar a faixa: ficha do líder (e a barrinha recolhida) e o chão
+  const DRAG_HITS = new Set(['hud', 'drag']);
 
   // Liga/desliga o "clique atravessa" conforme o que está embaixo do cursor.
   // A posição vem SÓ do mousemove da página (coordenadas exatas). A posição do sistema que o main
   // consulta pode vir deslocada com escala de DPI, e misturar as duas fazia o clique atravessar.
+  let dragging = false, dragFrom = null; // arrastando a faixa (ver startDrag)
   let cursor = null; // último mousemove (pra reavaliar quando a cena muda embaixo do mouse parado)
   let lastMove = 0;
   function hover(x, y) {
     cursor = x == null ? null : { x, y };
     const hit = cursor ? hitTest(x, y) : null;
-    document.body.style.cursor = hit ? 'pointer' : 'default';
+    document.body.style.cursor = dragging ? 'grabbing' : DRAG_HITS.has(hit) ? 'grab' : hit ? 'pointer' : 'default';
     if (!!hit === clickThrough) {
       clickThrough = !hit;
       bridge.setClickThrough(clickThrough);
@@ -911,10 +916,39 @@
       else throwCapsule(item);
     }
   }
-  window.addEventListener('click', (e) => act(e.clientX, e.clientY, 'janela'));
+  // Ficha e chão: apertar começa a arrastar (o main move a janela); soltar sem ter movido vale
+  // como clique. Os outros alvos agem no clique normal.
+  function startDrag(x, y) {
+    if (dragging) return;
+    dragging = true;
+    dragFrom = { x, y };
+    document.body.style.cursor = 'grabbing';
+    bridge.dragStart();
+  }
+  bridge.onDragEnd((r) => {
+    const from = dragFrom;
+    dragging = false;
+    dragFrom = null;
+    if (from && !r.moved) act(from.x, from.y, 'clique');
+    if (cursor) hover(cursor.x, cursor.y);
+  });
+  window.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && DRAG_HITS.has(hitTest(e.clientX, e.clientY))) startDrag(e.clientX, e.clientY);
+  });
+  window.addEventListener('mouseup', () => { if (dragging) bridge.dragEnd(); });
+  window.addEventListener('click', (e) => { if (!DRAG_HITS.has(hitTest(e.clientX, e.clientY))) act(e.clientX, e.clientY, 'janela'); });
+  // Ctrl + roda do mouse em cima da faixa: muda o tamanho
+  window.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    bridge.stripScale(e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
   // só leitura, pra diagnóstico/testes: o que está embaixo de um ponto da faixa
   window.__taskmon = { hit: (x, y) => hitTest(x, y) };
-  bridge.onPress((p) => act(p.x, p.y, 'windows'));
+  bridge.onPress((p) => {
+    if (DRAG_HITS.has(hitTest(p.x, p.y))) startDrag(p.x, p.y);
+    else act(p.x, p.y, 'windows');
+  });
 
   // ---------- Comandos do painel ----------
   bridge.onCommand((cmd) => {

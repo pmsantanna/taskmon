@@ -27,8 +27,9 @@ const USER_SPRITES = () => userFile('sprites');
 const STRIP_H = 200;
 const DEFAULT_CONFIG = {
   width: 800,      // largura em px do design (escala 100%)
-  scale: 1,        // tamanho: 1 = 1:1 com o design, 1.25, 1.5
-  offsetX: 230,    // distância da borda esquerda da tela
+  scale: 0.75,     // tamanho: 1 = 1:1 com o design (Ctrl + roda do mouse em cima da faixa muda)
+  offsetX: 230,    // distância da borda esquerda da área útil
+  offsetY: 0,      // distância da borda de baixo da área útil (0 = encostada na barra de tarefas)
   displayId: null, // null = monitor principal
 };
 
@@ -60,11 +61,12 @@ function targetDisplay() {
 function stripBounds() {
   const wa = targetDisplay().workArea;
   // fica em cima da área útil, encostada na barra de tarefas (sem brigar com ela pelo topo)
-  const s = config.scale || 1;
+  const s = config.scale || DEFAULT_CONFIG.scale;
   const height = Math.round(Math.min(STRIP_H * s, wa.height / 3));
   const width = Math.round(Math.min(config.width * (height / STRIP_H), wa.width));
   const x = wa.x + Math.max(0, Math.min(config.offsetX, wa.width - width));
-  return { x: Math.round(x), y: Math.round(wa.y + wa.height - height), width, height };
+  const up = Math.max(0, Math.min(config.offsetY || 0, wa.height - height));
+  return { x: Math.round(x), y: Math.round(wa.y + wa.height - height - up), width, height };
 }
 
 const sameBounds = (a, b) =>
@@ -79,7 +81,7 @@ const sameBounds = (a, b) =>
  */
 let placeTimers = [];
 function placeStrip({ force = false } = {}) {
-  if (!alive(strip)) return;
+  if (!alive(strip) || drag) return;
   placeTimers.forEach(clearTimeout);
   const apply = () => {
     if (!alive(strip)) return;
@@ -90,6 +92,60 @@ function placeStrip({ force = false } = {}) {
   };
   apply();
   placeTimers = [120, 400, 1200].map((ms) => setTimeout(apply, ms));
+}
+
+// ---------- Arrastar e redimensionar ----------
+// A faixa não é "movível" pelo sistema (ela ignora o mouse fora dos elementos). Quem arrasta é a
+// gente: a página avisa quando apertou na ficha, no chão ou na barrinha recolhida, e aqui a janela
+// segue o cursor até soltar o botão. Soltou: guarda a posição (relativa à área útil do monitor).
+let drag = null, dragTimer = null;
+function dragStart() {
+  if (drag || !alive(strip)) return;
+  const p = screen.getCursorScreenPoint(), b = strip.getBounds();
+  drag = { dx: p.x - b.x, dy: p.y - b.y, sx: p.x, sy: p.y, w: b.width, h: b.height, moved: false, t: Date.now() };
+  clearInterval(dragTimer);
+  dragTimer = setInterval(dragStep, 16);
+}
+function dragStep() {
+  if (!drag || !alive(strip)) return dragEnd();
+  // no Windows lemos o botão direto (o "soltar" pode acontecer fora da janela)
+  if (mouseButton && !mouseButton().down && Date.now() - drag.t > 60) return dragEnd();
+  if (Date.now() - drag.t > 60000) return dragEnd(); // trava de segurança
+  const p = screen.getCursorScreenPoint();
+  if (!drag.moved && Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < 5) return;
+  drag.moved = true;
+  strip.setBounds({ x: p.x - drag.dx, y: p.y - drag.dy, width: drag.w, height: drag.h });
+}
+function dragEnd() {
+  clearInterval(dragTimer);
+  if (!drag) return;
+  const moved = drag.moved;
+  drag = null;
+  if (!alive(strip)) return;
+  if (moved) {
+    const b = strip.getBounds();
+    const d = screen.getDisplayMatching(b);
+    const wa = d.workArea;
+    config.displayId = d.id === screen.getPrimaryDisplay().id ? null : d.id;
+    config.offsetX = Math.max(0, Math.round(b.x - wa.x));
+    config.offsetY = Math.max(0, Math.round(wa.y + wa.height - (b.y + b.height)));
+    saveConfig();
+    placeStrip({ force: true }); // encaixa dentro da área útil (e acerta o tamanho no monitor novo)
+  }
+  strip.webContents.send('strip:dragEnd', { moved });
+}
+
+const SCALES = [0.5, 0.6, 0.75, 0.9, 1, 1.25, 1.5];
+function setScale(s) {
+  config.scale = s;
+  saveConfig();
+  placeStrip({ force: true });
+}
+function stepScale(dir) {
+  const cur = config.scale || DEFAULT_CONFIG.scale;
+  let i = SCALES.findIndex((x) => x >= cur - 0.001);
+  if (i < 0) i = SCALES.length - 1;
+  setScale(SCALES[Math.max(0, Math.min(SCALES.length - 1, i + (dir > 0 ? 1 : -1)))]);
 }
 
 // ---------- Sempre no topo ----------
@@ -157,7 +213,7 @@ function reassertTop() {
 
 let lastFix = 0;
 function watchdog() {
-  if (!alive(strip)) return;
+  if (!alive(strip) || drag) return;
   reassertTop();
   // Se algo mexeu no tamanho/posição (DPI, barra mudou, explorer reiniciou), corrige.
   // No máximo a cada 3 s, pra não ficar brigando com arredondamento de escala fracionada.
@@ -465,10 +521,14 @@ function buildTrayMenu() {
     },
     {
       label: 'Tamanho',
-      submenu: [1, 1.25, 1.5].map((s) => ({
-        label: `${Math.round(s * 100)}%`, type: 'radio', checked: (config.scale || 1) === s,
-        click: () => { config.scale = s; saveConfig(); placeStrip({ force: true }); },
+      submenu: SCALES.map((s) => ({
+        label: `${Math.round(s * 100)}%`, type: 'radio', checked: (config.scale || DEFAULT_CONFIG.scale) === s,
+        click: () => setScale(s),
       })),
+    },
+    {
+      label: 'Voltar pra posição padrão',
+      click: () => { config.offsetX = DEFAULT_CONFIG.offsetX; config.offsetY = 0; config.displayId = null; saveConfig(); placeStrip({ force: true }); },
     },
     {
       label: 'Monitor',
@@ -523,6 +583,9 @@ ipcMain.on('strip:clickthrough', (_e, ignore) => {
   stripGrabbing = !ignore;
 });
 ipcMain.on('panel:open', (_e, section) => showPanel(section));
+ipcMain.on('strip:dragStart', dragStart);
+ipcMain.on('strip:dragEnd', dragEnd);
+ipcMain.on('strip:scale', (_e, dir) => stepScale(dir));
 ipcMain.on('panel:win', (e, action) => {
   const w = BrowserWindow.fromWebContents(e.sender);
   if (action === 'closeAll') return closeAllPanels();
@@ -554,6 +617,7 @@ ipcMain.on('assets:reload', broadcastAssetsChanged);
 app.whenReady().then(() => {
   config = { ...DEFAULT_CONFIG, ...readJson(CONFIG_FILE(), {}) };
   if (!config.layoutB) { config.width = 800; config.layoutB = true; delete config.mode; } // faixa nova (Layout B2)
+  if (!config.sizeV2) { if (!config.scale || config.scale === 1) config.scale = DEFAULT_CONFIG.scale; config.sizeV2 = true; } // 100% ficou grande
   createStrip();
   createTray();
   watchUserSprites();
