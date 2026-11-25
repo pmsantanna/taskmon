@@ -63,6 +63,7 @@
       src: img, frames, fps: c.fps || 6,
       fw: Math.floor(img.width / frames), fh: img.height,
       size: c.size || 1, // multiplicador do tamanho na faixa
+      facesLeft: c.facing === 'left', // o jogo espera bichos olhando pra direita
       custom: true, key,
     };
   }

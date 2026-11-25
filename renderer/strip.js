@@ -23,12 +23,11 @@
   const GAP = 52;          // distância entre os bichos da fila
   const SCENE_DY = 24;
   const snap = (v) => Math.round(v / 2) * 2; // posições sempre em pixel de arte inteiro (2 px do design)
-  // Do lado esquerdo da tela o card e os botões vão pra esquerda (na borda da tela); os bichos
-  // continuam andando pra direita e o selvagem entra pela borda direita.
+  // O card e os botões ficam na borda da tela e os bichos andam pro meio dela (ver layout()).
   let mirror = false, mirrorText = false;
   bridge.onSide && bridge.onSide((m) => { mirror = !!m; });     // a cena (chão, bichos, balões) fica 24 px mais baixa: mais céu, menos terra
   let W = 0, H = 0, k = 1, DW = 800, fieldW = 652, groundW = 800, leadX = 370, wildTargetX = 480;
-  let dpr = 1, kd = 1, oy = 0, axis = 800, fieldX0 = 0, enterX = 800;
+  let dpr = 1, kd = 1, oy = 0, axis = 800, fieldX0 = 0, enterX = 800, sceneFlip = false;
 
   // Tamanho do canvas em pixels físicos. Chamado no resize, quando o DPI muda (o evento
   // 'resize' NÃO dispara se só a escala mudar) e quando o main reposiciona a janela.
@@ -72,14 +71,17 @@
     // parte visível do chão (o card da direita cobre o resto); a fila inteira cabe atrás do líder
     fieldW = Math.max(200, Math.round(DW - (state.settings.cardClosed ? 48 : 148)));
     const n = state.settings.showTeam === false ? 1 : state.team.length;
-    // O card passa por cima do chão (não soma na largura) e abrir/fechar ele não mexe na cena:
-    // o selvagem fica logo antes do card aberto, o líder 110 px antes dele e a fila atrás.
+    // Contas "lógicas": o card fica na esquerda e os bichos andam pra direita, saindo da borda da
+    // tela pro meio. A fila começa colada no card (o último da fila do lado dele), o líder vai na
+    // frente e o selvagem 110 px adiante, chegando pelo lado aberto. Com o card na borda DIREITA da
+    // tela a cena é espelhada (aí eles andam pra esquerda). O card passa por cima do chão e
+    // abrir/fechar ele não mexe na cena.
     const CARD = 148;
-    // card na borda direita: o selvagem para antes dele; card à esquerda: o lado direito fica livre
-    wildTargetX = snap(DW - (mirror ? 0 : CARD) - BOX - 20);
-    fieldX0 = mirror ? Math.round(DW - fieldW) : 0; // onde começa a parte visível do chão
-    enterX = (mirror ? DW : fieldW) + 10;           // o selvagem entra por trás do card ou pela borda
-    leadX = wildTargetX - 110;
+    sceneFlip = !mirror;                                // mirror = card à esquerda (vem do main)
+    leadX = snap(CARD + 12 + GAP * (n - 1));
+    wildTargetX = leadX + 110;
+    fieldX0 = Math.round(DW - fieldW);                  // início (lógico) da parte visível do chão
+    enterX = DW + 10;                                   // o selvagem entra pela borda aberta
     // largura mínima pra caber a fila inteira (a largura normal vem da bandeja)
     const need = 24 + GAP * (n - 1) + 110 + BOX + 20 + CARD;
     if (need !== layout.need) { layout.need = need; if (bridge.stripWidth) bridge.stripWidth(need); }
@@ -638,6 +640,7 @@
     if (filter) ctx.filter = filter;
     ctx.globalAlpha *= alpha;
     ctx.imageSmoothingEnabled = false;
+    if (sheet.facesLeft) flip = !flip; // PNG desenhado olhando pra esquerda (sprites.json: "facing": "left")
     if (flip) { ctx.translate(px + dw, py); ctx.scale(-1, 1); ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, 0, 0, dw, dh); }
     else ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, px, py, dw, dh);
     ctx.restore();
@@ -883,7 +886,8 @@
     ctx.setTransform(kd, 0, 0, kd, kd * FX, Math.round(canvas.height - 200 * kd) + kd * SCENE_DY);
     ctx.imageSmoothingEnabled = false;
     ctx.save();
-    // a cena nunca espelha: os bichos sempre andam pra direita; só o card e os botões trocam de lado
+    if (sceneFlip) { ctx.translate(axis, 0); ctx.scale(-1, 1); } // card à direita: andam pra esquerda
+    mirrorText = sceneFlip;
     drawGround();
     if (sim.hit && sim.hit.crit) ctx.translate(snap(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
 
@@ -940,7 +944,7 @@
     for (const f of sim.floaters) {
       ctx.globalAlpha = Math.min(1, 3 * (1 - f.t / f.life));
       const half = measure(f.text, f.size) / 2 + 3;
-      text(f.text, Math.min(fieldX0 + fieldW - half, Math.max(fieldX0 + half, f.x)), f.y - f.t * 24, { size: f.size, color: f.color });
+      text(f.text, Math.min(DW - half, Math.max(fieldX0 + half, f.x)), f.y - f.t * 24, { size: f.size, color: f.color });
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -1011,9 +1015,10 @@
     const v = {
       width: W, height: 200 * k, starter: !state.starterChosen || !lead, collapsed: st.collapsed, cardClosed: st.cardClosed,
       card: st.card, fieldW, caps, auto: G.isAuto(state), hot: over && !['lead', 'wild', 'drag'].includes(over) && !over.startsWith('mon:') ? over : null,
-      tag: null, bubbles: [], prompt: null, toast: null, mirror, fieldX0,
+      tag: null, bubbles: [], prompt: null, toast: null, mirror, fieldX0: mirror ? fieldX0 : 0,
     };
-    const fxp = (x) => x - fieldX0; // x da cena -> x dentro da parte visível do chão (camada HTML)
+    // x lógico da cena -> x dentro da parte visível do chão (camada HTML, que nunca espelha)
+    const fxp = (x) => (sceneFlip ? axis - x : x - fieldX0);
     if (v.starter) return v;
     const tick = Math.floor(sim.anim * 8);
     v.lead = {
@@ -1035,7 +1040,7 @@
 
     const w = sim.wild;
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
-      v.tag = { x: Math.round(sim.wildX - 4 - fieldX0), y: 88 + SCENE_DY, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
+      v.tag = { x: Math.round(sceneFlip ? axis - (sim.wildX - 4) - 72 : sim.wildX - 4 - fieldX0), y: 88 + SCENE_DY, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
     }
     const cp = capsulePos();
     for (const [who, b] of Object.entries(sim.bubbles)) {
@@ -1069,6 +1074,7 @@
     // bichos no campo; o chão e os arbustos servem pra arrastar; o céu deixa o clique passar
     let fx = x / k - FX;
     const fy = (y - oy) / k - SCENE_DY;
+    if (sceneFlip) fx = axis - fx;
     if (fx < 0 || fx > groundW) return null;
     if (fy >= FEET - BOX_H - 14 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
       if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';

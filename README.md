@@ -56,7 +56,8 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   (Pequeno/Médio/Grande/Enorme = 1 a 4 pixels da tela por pixel de arte, sempre inteiro, pra não borrar).
   O card e os botões ficam sempre do lado da borda da tela: na metade esquerda vão pra esquerda;
   passando do meio, vão pra direita e a faixa fica presa na borda direita (quando cresce, cresce pra
-  esquerda). Os bichos sempre andam pra direita.
+  esquerda). Os bichos andam da borda pro meio da tela: a fila começa colada no card e o selvagem
+  chega pelo lado aberto. PNG desenhado olhando pra esquerda: `"facing": "left"` no `sprites.json`.
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
   (Pequeno a Enorme), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).

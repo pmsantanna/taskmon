@@ -46,6 +46,7 @@ Um JSON nesta pasta, com o caminho do arquivo como chave:
 
 {
   "creatures/pavio.png":      { "frames": 4, "fps": 8, "size": 1.2, "shinyHue": 150 },
+  "creatures/charizard.png":  { "facing": "left" },
   "tiles/campina_ground.png": { "scale": 2, "speed": 1, "feet": 4 },
   "tiles/campina_bg.png":     { "scale": 1, "speed": 0.3, "offsetY": 0 }
 }
@@ -53,6 +54,8 @@ Um JSON nesta pasta, com o caminho do arquivo como chave:
   frames    quantidade de quadros (se não der pra detectar sozinho)
   fps       velocidade da animação (padrão 6)
   size      multiplicador do tamanho da criatura na faixa (padrão 1)
+  facing    "left" se o PNG foi desenhado olhando pra esquerda (o jogo espera
+            olhando pra direita e vira sozinho conforme o lado em que anda)
   shinyHue  graus de giro de cor pro brilhante sem arquivo próprio (padrão 150)
   scale     ampliação do tile/moldura (padrão: automático pra tile, 1 pra moldura)
   speed     velocidade de rolagem (chão 1, fundo 0.35)
