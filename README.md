@@ -52,12 +52,13 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   ligue **MARCAR** e clique nos bichos (ou "Marcar filtro") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
 - **Arraste a faixa** pelo chão ou pela barrinha recolhida, pra qualquer lugar
-  (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho.
+  (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho
+  (Pequeno/Médio/Grande/Enorme = 1 a 4 pixels da tela por pixel de arte, sempre inteiro, pra não borrar).
   O card e os botões ficam sempre do lado da borda da tela: na metade esquerda ela espelha (card à
   esquerda, a equipe anda pra esquerda); passando do meio, o card vai pra direita e ela fica presa na
   borda direita (quando cresce, cresce pra esquerda).
 - **Ícone na bandeja** (perto do relógio): mover a faixa pra esquerda/direita, largura, tamanho
-  (50% a 150%, padrão 75%), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
+  (Pequeno a Enorme), voltar pra posição padrão, monitor, abrir/recarregar a pasta de sprites, iniciar com o Windows e sair.
 - Fechou o app? Ao abrir de novo você ganha o progresso do tempo fora (até 8 h).
 - **Golpes**: cada criatura tem até 4, aprendidos por nível ou por MT. No STATUS, **TROCAR** escolhe os
   ativos; clique num golpe pra ver a descrição e clique de novo pra abrir os detalhes.
@@ -141,9 +142,11 @@ Naturezas e itens ficam em `shared/items.js`.
 
 Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout B).
 
-- **Faixa B2**: um overlay transparente de 760×200 em px do design (em 75% por padrão; largura na bandeja), encostado na
-  barra de tarefas até você arrastar pra outro lugar. Só aparecem o chão (de ponta a ponta, piso em
-  perspectiva com a beirada de terra na frente, cores por zona) com arbustos rolando, a **equipe inteira
+- **Faixa B2**: um overlay transparente de 760×200 em px do design (largura na bandeja), encostado na
+  barra de tarefas até você arrastar pra outro lugar. Tudo é desenhado no grid de pixel de arte
+  (1 pixel de arte = 2 px do design) e a janela tem altura múltipla de 100 px físicos, então nada
+  fica "tremido". Só aparecem o chão (de ponta a ponta, vista lateral com grama na frente dos pés,
+  paleta por zona com luz amarelada e sombra azulada) com arbustos rolando, sombra embaixo de cada bicho, a **equipe inteira
   andando em fila** (ou só o líder: Ajustes ou bandeja) com barrinhas de HP em cima da cabeça (o líder
   também tem NV e EXP), os botões **Recolher**, **Painéis**
   e **Mochila** e o card da direita; fora deles o clique passa pra área de trabalho.

@@ -61,8 +61,12 @@ function targetDisplay() {
 function stripBounds() {
   const wa = targetDisplay().workArea;
   // fica em cima da área útil, encostada na barra de tarefas (sem brigar com ela pelo topo)
-  const s = config.scale || DEFAULT_CONFIG.scale;
-  const height = Math.round(Math.min(STRIP_H * s, wa.height / 3));
+  // Altura em múltiplos de 100 px FÍSICOS: cada pixel de arte (2 px do design) vira N pixels inteiros
+  // da tela, sem pixel "tremido" (com 75% em 100% de escala do Windows, um pixel de arte dava 1,5 px).
+  const sf = targetDisplay().scaleFactor || 1;
+  let n = pixelN();
+  while (n > 1 && (n * 100) / sf > wa.height / 3) n--;
+  const height = Math.round((n * 100) / sf);
   // largura da bandeja; a faixa pede mais se a equipe inteira não couber
   const dw = Math.max(config.width, wantWidth || 0);
   const width = Math.round(Math.min(dw * (height / STRIP_H), wa.width));
@@ -147,18 +151,19 @@ function dragEnd() {
   strip.webContents.send('strip:dragEnd', { moved });
 }
 
-const SCALES = [0.5, 0.6, 0.75, 0.9, 1, 1.25, 1.5];
-function setScale(s) {
-  config.scale = s;
+// Tamanho = pixels da tela por pixel de arte (1 a 4). Sem escolha ainda, sai do "scale" antigo.
+const SIZES = [[1, 'Pequeno'], [2, 'Médio'], [3, 'Grande'], [4, 'Enorme']];
+function pixelN() {
+  if (config.pixelN) return config.pixelN;
+  const sf = targetDisplay().scaleFactor || 1;
+  return Math.max(1, Math.min(4, Math.round((STRIP_H * (config.scale || DEFAULT_CONFIG.scale) * sf) / 100)));
+}
+function setPixelN(n) {
+  config.pixelN = Math.max(1, Math.min(4, n));
   saveConfig();
   placeStrip({ force: true });
 }
-function stepScale(dir) {
-  const cur = config.scale || DEFAULT_CONFIG.scale;
-  let i = SCALES.findIndex((x) => x >= cur - 0.001);
-  if (i < 0) i = SCALES.length - 1;
-  setScale(SCALES[Math.max(0, Math.min(SCALES.length - 1, i + (dir > 0 ? 1 : -1)))]);
-}
+const stepScale = (dir) => setPixelN(pixelN() + (dir > 0 ? 1 : -1));
 
 // ---------- Sempre no topo ----------
 // Clicar na barra de tarefas (ou em qualquer janela "topmost") joga ela pra cima da faixa.
@@ -535,9 +540,9 @@ function buildTrayMenu() {
     },
     {
       label: 'Tamanho',
-      submenu: SCALES.map((s) => ({
-        label: `${Math.round(s * 100)}%`, type: 'radio', checked: (config.scale || DEFAULT_CONFIG.scale) === s,
-        click: () => setScale(s),
+      submenu: SIZES.map(([n, name]) => ({
+        label: `${name} (${n * 100} px)`, type: 'radio', checked: pixelN() === n,
+        click: () => setPixelN(n),
       })),
     },
     {

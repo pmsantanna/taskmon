@@ -117,7 +117,7 @@
     set('m-portrait', 'mdy', v.mini.dy, (el, x) => { el.style.transform = `translateY(${x}px)`; });
     text('mini-txt', 'mt', v.mini.text);
     set('mini-txt', 'mc', v.mini.color, (el, x) => { el.style.color = x; });
-    set('mini', 'mb', v.mini.alert ? '#c0402e' : '#0a0c0e', (el, x) => el.style.setProperty('--mb', x));
+    set('mini', 'mb', v.mini.alert ? '#c0402e' : '#1c2030', (el, x) => el.style.setProperty('--mb', x));
     set('m-gnd', 'mg', v.mini.gx, (el, x) => { el.style.backgroundPositionX = `${x}px`; });
     text('m-caps', 'mcaps', fmt(v.caps));
   }

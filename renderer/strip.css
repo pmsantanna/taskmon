@@ -23,7 +23,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: transparent;
 /* botões da direita (recolher, painéis, mochila) */
 #tools { position: absolute; right: 4px; top: 20px; display: flex; gap: 4px; }
 .tool {
-  width: 40px; height: 36px; box-sizing: border-box; border: 2px solid #0a0c0e; background: #262c32; color: #e0a040;
+  width: 40px; height: 36px; box-sizing: border-box; border: 2px solid #1c2030; background: #2c3244; color: #e0a040;
   display: flex; align-items: center; justify-content: center; box-shadow: inset 2px 2px 0 rgba(255,255,255,.15), inset -2px -2px 0 rgba(0,0,0,.4), 3px 3px 0 rgba(10,12,14,.35);
 }
 .hot { filter: brightness(1.18); }
@@ -31,31 +31,31 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: transparent;
 /* card da direita (bichos da área / ovo / hoje) */
 #card {
   position: absolute; right: 0; bottom: 0; width: 136px; height: 136px; box-sizing: border-box; padding: 8px;
-  background: #1b2025; border: 2px solid #0a0c0e; box-shadow: inset 0 0 0 1px #3a4048; display: flex; flex-direction: column; justify-content: space-between;
+  background: #232838; border: 2px solid #1c2030; box-shadow: inset 0 0 0 1px #3a4048; display: flex; flex-direction: column; justify-content: space-between;
 }
-#card-close { position: absolute; left: -18px; top: 8px; width: 16px; height: 30px; box-sizing: border-box; border: 2px solid #0a0c0e; border-right: 0; background: #262c32; color: #e0a040; display: flex; align-items: center; justify-content: center; }
+#card-close { position: absolute; left: -18px; top: 8px; width: 16px; height: 30px; box-sizing: border-box; border: 2px solid #1c2030; border-right: 0; background: #2c3244; color: #e0a040; display: flex; align-items: center; justify-content: center; }
 #card-mini {
   position: absolute; right: 0; bottom: 0; width: 36px; height: 136px; box-sizing: border-box; padding: 6px 0;
-  background: #1b2025; border: 2px solid #0a0c0e; box-shadow: inset 0 0 0 1px #3a4048; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  background: #232838; border: 2px solid #1c2030; box-shadow: inset 0 0 0 1px #3a4048; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
 }
-.cbtn { width: 24px; height: 24px; box-sizing: border-box; border: 2px solid #0a0c0e; background: #262c32; color: #e0a040; display: flex; align-items: center; justify-content: center; }
+.cbtn { width: 24px; height: 24px; box-sizing: border-box; border: 2px solid #1c2030; background: #2c3244; color: #e0a040; display: flex; align-items: center; justify-content: center; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .k9 { font-size: 9px; letter-spacing: 1px; color: #8a8f86; line-height: 1; white-space: nowrap; }
 .v9 { font-size: 9px; color: #d8dcd6; line-height: 1; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.dot { width: 7px; height: 7px; background: #d0743a; border: 1px solid #0a0c0e; }
+.dot { width: 7px; height: 7px; background: #d0743a; border: 1px solid #1c2030; }
 .mons { display: flex; gap: 4px; }
-.mon { position: relative; width: 27px; height: 30px; box-sizing: border-box; border: 2px solid #0a0c0e; background: #9fb8b8; display: flex; align-items: center; justify-content: center; }
+.mon { position: relative; width: 27px; height: 30px; box-sizing: border-box; border: 2px solid #1c2030; background: #9fb8b8; display: flex; align-items: center; justify-content: center; }
 .mon.unk { background: #20262b; }
-.mon .got { position: absolute; right: -2px; top: -2px; width: 7px; height: 7px; background: #e0a040; border: 1px solid #0a0c0e; }
+.mon .got { position: absolute; right: -2px; top: -2px; width: 7px; height: 7px; background: #e0a040; border: 1px solid #1c2030; }
 .big13 { font-size: 13px; color: #f2ecd8; line-height: 1; }
-.egg-box { width: 50px; height: 60px; flex-shrink: 0; box-sizing: border-box; border: 2px solid #0a0c0e; background: #262c32; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; }
-.eggbar { position: relative; height: 8px; box-sizing: border-box; border: 1px solid #0a0c0e; background: #2a3036; }
+.egg-box { width: 50px; height: 60px; flex-shrink: 0; box-sizing: border-box; border: 2px solid #1c2030; background: #2c3244; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; }
+.eggbar { position: relative; height: 8px; box-sizing: border-box; border: 1px solid #1c2030; background: #2a3036; }
 .eggbar > i { display: block; height: 100%; background: #6f9a4a; }
 .eggbar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 9px, #12161a 9px 10px); }
 dl.today { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 5px; align-items: baseline; }
 dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-size: 13px; color: #f2ecd8; }
-.auto { margin-left: auto; height: 22px; box-sizing: border-box; padding: 0 5px; border: 2px solid #0a0c0e; font-size: 8px; display: flex; align-items: center; }
-.auto.on { background: #6f9a4a; color: #0a0c0e; } .auto.off { background: #262c32; color: #a8b0a8; }
+.auto { margin-left: auto; height: 22px; box-sizing: border-box; padding: 0 5px; border: 2px solid #1c2030; font-size: 8px; display: flex; align-items: center; }
+.auto.on { background: #6f9a4a; color: #1c2030; } .auto.off { background: #2c3244; color: #a8b0a8; }
 
 /* balões em cima dos bichos */
 .bubble {
@@ -85,13 +85,13 @@ dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-si
 
 /* modo recolhido */
 #mini {
-  position: absolute; bottom: 6px; width: 300px; height: 46px; box-sizing: border-box; padding: 0 4px 5px 6px; background: #1b2025;
-  border: 2px solid var(--mb, #0a0c0e); box-shadow: inset 0 0 0 1px #3a4048, 4px 4px 0 rgba(10,12,14,.35); display: flex; align-items: center; gap: 8px; overflow: hidden;
+  position: absolute; bottom: 6px; width: 300px; height: 46px; box-sizing: border-box; padding: 0 4px 5px 6px; background: #232838;
+  border: 2px solid var(--mb, #1c2030); box-shadow: inset 0 0 0 1px #3a4048, 4px 4px 0 rgba(10,12,14,.35); display: flex; align-items: center; gap: 8px; overflow: hidden;
 }
 #mini .gnd { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background-image: url(../assets/b/chao.png); background-size: 64px 32px; background-position-y: -4px; image-rendering: pixelated; }
 #mini-txt { flex: 1; min-width: 0; font-size: 9px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #mini .seeds { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #f2ecd8; }
-#mini .exp { width: 30px; height: 30px; flex-shrink: 0; box-sizing: border-box; border: 2px solid #0a0c0e; background: #262c32; color: #e0a040; display: flex; align-items: center; justify-content: center; box-shadow: inset 2px 2px 0 rgba(255,255,255,.15), inset -2px -2px 0 rgba(0,0,0,.4); }
+#mini .exp { width: 30px; height: 30px; flex-shrink: 0; box-sizing: border-box; border: 2px solid #1c2030; background: #2c3244; color: #e0a040; display: flex; align-items: center; justify-content: center; box-shadow: inset 2px 2px 0 rgba(255,255,255,.15), inset -2px -2px 0 rgba(0,0,0,.4); }
 
 /* antes de escolher o inicial */
 #starter { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 10px 14px; background: #12161a; border: 2px solid #0a0c0e; box-shadow: inset 0 3px 0 #e0a040, 4px 4px 0 rgba(10,12,14,.35); font-size: 15px; white-space: nowrap; }
@@ -99,5 +99,5 @@ dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-si
 /* espelhada (faixa no lado esquerdo da tela): botões e card à esquerda, na borda */
 #ui.mirror #tools { right: auto; left: 4px; }
 #ui.mirror #card, #ui.mirror #card-mini { right: auto; left: 0; }
-#ui.mirror #card-close { left: auto; right: -18px; border-right: 2px solid #0a0c0e; border-left: 0; }
+#ui.mirror #card-close { left: auto; right: -18px; border-right: 2px solid #1c2030; border-left: 0; }
 #ui.mirror #card-close svg, #ui.mirror #card-mini .cbtn svg { transform: scaleX(-1); }

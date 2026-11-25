@@ -22,12 +22,13 @@
   const BOX_H = 48;
   const GAP = 52;          // distância entre os bichos da fila
   const SCENE_DY = 24;
+  const snap = (v) => Math.round(v / 2) * 2; // posições sempre em pixel de arte inteiro (2 px do design)
   // Do lado esquerdo da tela a faixa espelha: card e botões à esquerda (na borda), a equipe anda pra esquerda.
   // As contas são feitas sempre "normais" (x lógico) e só o desenho e o clique são espelhados.
   let mirror = false, mirrorText = false;
   bridge.onSide && bridge.onSide((m) => { mirror = !!m; });     // a cena (chão, bichos, balões) fica 24 px mais baixa: mais céu, menos terra
   let W = 0, H = 0, k = 1, DW = 800, fieldW = 652, groundW = 800, leadX = 370, wildTargetX = 480;
-  let dpr = 1;
+  let dpr = 1, kd = 1, oy = 0, axis = 800;
 
   // Tamanho do canvas em pixels físicos. Chamado no resize, quando o DPI muda (o evento
   // 'resize' NÃO dispara se só a escala mudar) e quando o main reposiciona a janela.
@@ -59,8 +60,14 @@
 
   const FIGHTING = ['fight', 'down', 'prompt', 'retry', 'throw', 'shake'];
   function layout() {
-    k = H / 200 || 1;
+    // pixels físicos por unidade do design: N/2, com N inteiro quando a janela tem altura múltipla
+    // de 100 px físicos (o main ajusta). Assim cada pixel de arte (2 unidades) = N pixels da tela.
+    const pn = canvas.height / 100, pi = Math.round(pn);
+    kd = pi >= 1 && Math.abs(pn - pi) < 0.06 ? pi / 2 : canvas.height / 200;
+    k = kd / dpr || 1;
+    oy = H - 200 * k; // sobra (fração de px) em cima: a cena fica colada na base
     DW = W / k;
+    axis = Math.floor(DW / 2) * 2; // eixo do espelhamento, par pra continuar no grid
     groundW = Math.ceil(DW);
     // parte visível do chão (o card da direita cobre o resto); a fila inteira cabe atrás do líder
     fieldW = Math.max(200, Math.round(DW - (state.settings.cardClosed ? 48 : 148)));
@@ -68,7 +75,7 @@
     // O card passa por cima do chão (não soma na largura) e abrir/fechar ele não mexe na cena:
     // o selvagem fica logo antes do card aberto, o líder 110 px antes dele e a fila atrás.
     const CARD = 148;
-    wildTargetX = Math.round(DW - CARD - BOX - 20);
+    wildTargetX = snap(DW - CARD - BOX - 20);
     leadX = wildTargetX - 110;
     // largura mínima pra caber a fila inteira (a largura normal vem da bandeja)
     const need = 24 + GAP * (n - 1) + 110 + BOX + 20 + CARD;
@@ -612,12 +619,26 @@
     return ctx.measureText(str).width;
   }
 
-  /** Criatura (PNG customizado animado ou pixel art), encaixada na caixa 64×48 com os pés em FEET. */
+  /**
+   * Criatura (PNG customizado animado ou pixel art): recortada, em escala inteira, centralizada na
+   * caixa de 64 px que começa em x, com os pés em FEET (+dy do pulinho) e sombra no chão.
+   * Devolve { w, h } em px do design.
+   */
   function sprite(id, shiny, x, { flip = false, alpha = 1, dy = 0, t = sim.anim, filter = null } = {}) {
     const sheet = A.creature(id, shiny);
-    if (filter) { ctx.save(); ctx.filter = filter; }
-    A.drawSheet(ctx, sheet, A.frameAt(sheet, t), Math.round(x), FEET - BOX_H + dy, BOX, BOX_H, { flip, alpha });
-    if (filter) ctx.restore();
+    const box = sheetBox(sheet), s = spriteScale(sheet);
+    const dw = box.w * s, dh = box.h * s, cx = x + BOX / 2;
+    footShadow(cx, FEET, dw, alpha);
+    const px = snap(cx - dw / 2), py = snap(FEET + dy - dh);
+    const sx = A.frameAt(sheet, t) * sheet.fw + box.x;
+    ctx.save();
+    if (filter) ctx.filter = filter;
+    ctx.globalAlpha *= alpha;
+    ctx.imageSmoothingEnabled = false;
+    if (flip) { ctx.translate(px + dw, py); ctx.scale(-1, 1); ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, 0, 0, dw, dh); }
+    else ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, px, py, dw, dh);
+    ctx.restore();
+    return { w: dw, h: dh };
   }
 
   function itemSprite(id, x, y, size, alpha = 1) {
@@ -625,74 +646,147 @@
     A.drawSheet(ctx, sheet, A.frameAt(sheet, sim.t), Math.round(x), Math.round(y), size, size, { alpha });
   }
 
+  // ---------- Chão no grid de pixel de arte ----------
+  // Ajustes do Claude Design: 1 pixel de arte = 2 px do design (a densidade do chao.png/arbustos.png) e
+  // a janela tem altura múltipla de 100 px físicos, então cada pixel de arte vira um número INTEIRO de
+  // pixels da tela. Tudo é posicionado em números pares do design (snap). Paletas por zona com
+  // "hue shift" (luz puxando pro amarelo, sombra pro azul/roxo), trocando as cores das texturas.
+  const ZONE_PAL = {
+    campina: {
+      grama: ['#c8f088', '#98d860', '#68b848', '#4a9440', '#2c5a3a'],
+      terra: ['#d0a060', '#a87444', '#7c5236', '#583a32', '#3a2428'],
+      pedra: ['#c0c8d0', '#8890a0', '#545c70'],
+      fundo: ['#7fb088', '#5e9474', '#44766a'],
+    },
+    lago: {
+      grama: ['#b8ec98', '#88d070', '#5cb060', '#3f8c58', '#24504a'],
+      terra: ['#c8a070', '#9c7450', '#72543e', '#4e3a38', '#30242c'],
+      pedra: ['#c4d0dc', '#8a9ab0', '#56627c'],
+      fundo: ['#80b8a8', '#5e9a90', '#447a7a'],
+    },
+    caverna: {
+      grama: ['#c8c0b4', '#a49c90', '#827a72', '#625a58', '#3c3440'],
+      terra: ['#9a8c80', '#766a62', '#564c4a', '#3c3438', '#241e28'],
+      pedra: ['#d0d4dc', '#9aa0b0', '#646a80'],
+      fundo: ['#6a6478', '#544e64', '#403a52'],
+    },
+    vulcao: {
+      grama: ['#b48a74', '#8e6a5c', '#6a4c48', '#4a3438', '#2e2028'],
+      terra: ['#7a5450', '#5a3c40', '#422c34', '#2e1e28', '#1c121a'],
+      pedra: ['#9a8a90', '#6a5a66', '#46384a'],
+      fundo: ['#8a5a5c', '#6c4450', '#503444'],
+      lava: ['#f8e070', '#f8a040', '#e05830', '#a83028'],
+    },
+  };
+  // cores originais das texturas do design -> posição na rampa da zona
+  const SRC_INDEX = {
+    '#b4e88a': ['grama', 0], '#8ad06a': ['grama', 1], '#5fae4a': ['grama', 2], '#3f8a38': ['grama', 3], '#2f5a2a': ['grama', 4],
+    '#b8854f': ['terra', 0], '#a0703f': ['terra', 1], '#8a5a32': ['terra', 2], '#6e4426': ['terra', 3], '#5a3a20': ['terra', 4],
+    '#bcbcae': ['pedra', 0], '#8a8a7e': ['pedra', 1], '#55554c': ['pedra', 2],
+    '#7f8a64': ['fundo', 0], '#6a7452': ['fundo', 1], '#58603f': ['fundo', 2],
+  };
+  const recolorCache = {};
+  /** Textura com as cores da zona (feita uma vez e guardada). Substitui o ctx.filter. */
+  function zoneTexture(im, zone) {
+    if (!im || !im.complete || !im.naturalWidth) return null;
+    const key = `${im.src}|${zone}`;
+    if (recolorCache[key]) return recolorCache[key];
+    const Z = ZONE_PAL[zone] || ZONE_PAL.campina;
+    const c = document.createElement('canvas');
+    c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(im, 0, 0);
+    const data = g.getImageData(0, 0, c.width, c.height), d = data.data;
+    const hex = (r, gg, b) => `#${[r, gg, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    for (let i = 0; i < d.length; i += 4) {
+      if (!d[i + 3]) continue;
+      const m = SRC_INDEX[hex(d[i], d[i + 1], d[i + 2])];
+      const target = m && Z[m[0]] && Z[m[0]][m[1]];
+      if (!target) continue;
+      d[i] = parseInt(target.slice(1, 3), 16); d[i + 1] = parseInt(target.slice(3, 5), 16); d[i + 2] = parseInt(target.slice(5, 7), 16);
+    }
+    g.putImageData(data, 0, 0);
+    return (recolorCache[key] = c);
+  }
+
   /** Repete uma imagem na horizontal (w×h cada), rolando com `offset`. sy/sh = recorte da origem. */
   function tiled(im, w, h, offset, y, sy = 0, sh = null) {
     if (!im || im.complete === false || !(im.naturalWidth || im.width)) return;
     const iw = im.naturalWidth || im.width, ih = sh ?? (im.naturalHeight || im.height);
-    let x = -(((offset % w) + w) % w);
-    for (; x < groundW; x += w) ctx.drawImage(im, 0, sy, iw, ih, Math.round(x), y, Math.ceil(w), h);
+    let x = -(((snap(offset) % w) + w) % w);
+    for (; x < groundW + w; x += w) ctx.drawImage(im, 0, sy, iw, ih, x, y, w, h);
   }
 
-  // Chão "inclinado": o piso é visto de cima em perspectiva (as linhas do fundo são mais estreitas e
-  // rolam mais devagar), com a beirada de terra na frente. Cores do piso por zona.
-  const FLOOR_Y = 126, FLOOR_H = 34, FRONT_Y = FLOOR_Y + FLOOR_H; // os pés (148) ficam no meio do piso
-  const FLOOR = {
-    campina: { base: '#5fae4a', dark: '#4f9a40', tuft: '#8ad06a', hi: '#b4e88a', dot: '#e8d070', stone: '#8a8a7e' },
-    lago: { base: '#58a650', dark: '#48924a', tuft: '#84cc6e', hi: '#b0e48e', dot: '#a8c4e8', stone: '#8a8a7e' },
-    caverna: { base: '#7a7a70', dark: '#68685e', tuft: '#8e8e82', hi: '#a8a89a', dot: '#5a5a52', stone: '#bcbcae', filter: 'grayscale(.75) brightness(.8)' },
-    vulcao: { base: '#5a4038', dark: '#4a3430', tuft: '#6e4a3c', hi: '#8a5a44', dot: '#e0703a', stone: '#3a2a26', filter: 'sepia(.7) hue-rotate(-25deg) saturate(1.4) brightness(.62)', lava: true },
-  };
-  const floorCache = {};
-  function floorTex(zone) {
-    if (floorCache[zone]) return floorCache[zone];
-    const P = FLOOR[zone] || FLOOR.campina;
-    const c = document.createElement('canvas');
-    c.width = 64; c.height = 16;
-    const g = c.getContext('2d');
-    g.fillStyle = P.base; g.fillRect(0, 0, 64, 16);
-    let seed = zone.length * 977 + 13;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 90; i++) { g.fillStyle = P.dark; g.fillRect(Math.floor(rnd() * 64), Math.floor(rnd() * 16), 2, 1); }
-    for (let i = 0; i < 26; i++) { const x = Math.floor(rnd() * 64), y = 1 + Math.floor(rnd() * 14); g.fillStyle = P.tuft; g.fillRect(x, y, 1, 2); g.fillStyle = P.hi; g.fillRect(x, y, 1, 1); }
-    for (let i = 0; i < 5; i++) { g.fillStyle = P.dot; g.fillRect(Math.floor(rnd() * 63), Math.floor(rnd() * 15), 1, 1); }
-    for (let i = 0; i < 4; i++) { g.fillStyle = P.stone; g.fillRect(Math.floor(rnd() * 62), Math.floor(rnd() * 15), 2, 1); }
-    return (floorCache[zone] = c);
-  }
-
+  // Chão de vista lateral (combina com os sprites): arbustos no fundo e terra + grama colada na base.
+  const GROUND_Y = 200 - 64;   // topo da textura do chão; os pés (148) ficam 2 pixels de arte dentro da grama
   function drawGround() {
     const bg = A.tile(state.zone, 'bg'), gr = A.tile(state.zone, 'ground');
-    const P = FLOOR[state.zone] || FLOOR.campina;
-    // arbustos no fundo (rolam devagar)
-    ctx.save();
-    ctx.globalAlpha = 0.9;
-    if (P.filter && !bg) ctx.filter = P.filter;
-    if (bg) { const sc = bg.cfg.scale || 40 / bg.img.height; tiled(bg.img, bg.img.width * sc, bg.img.height * sc, sim.scroll * (bg.cfg.speed ?? 0.4), FLOOR_Y + 8 - bg.img.height * sc); }
-    else tiled(TEX.arbustos, 128, 40, sim.scroll * 0.4, FLOOR_Y - 32);
-    ctx.restore();
+    const Z = ZONE_PAL[state.zone] || ZONE_PAL.campina;
+    if (bg) { const sc = bg.cfg.scale || 40 / bg.img.height; tiled(bg.img, bg.img.width * sc, bg.img.height * sc, sim.scroll * (bg.cfg.speed ?? 0.4), GROUND_Y + 8 - bg.img.height * sc); }
+    else tiled(zoneTexture(TEX.arbustos, state.zone), 128, 40, sim.scroll * 0.4, GROUND_Y - 34);
     if (gr) { // chão da pasta de sprites: colado na base, de ponta a ponta
       const sc = gr.cfg.scale || 64 / gr.img.height;
       tiled(gr.img, gr.img.width * sc, gr.img.height * sc, sim.scroll * (gr.cfg.speed ?? 1), 200 - gr.img.height * sc);
       return;
     }
-    // piso em perspectiva, linha a linha
-    const tex = floorTex(state.zone);
-    for (let r = 0; r < FLOOR_H; r++) {
-      const t = r / (FLOOR_H - 1);
-      const w = 64 * (1.3 + 1.1 * t);
-      tiled(tex, w, 1.6, sim.scroll * (0.55 + 0.45 * t), FLOOR_Y + r, Math.min(15, Math.floor(t * 16)), 1);
+    tiled(zoneTexture(TEX.chao, state.zone), 128, 64, sim.scroll, GROUND_Y);
+    // contato entre os arbustos e a grama: uma linha chapada de sombra fria
+    ctx.fillStyle = Z.fundo[2];
+    ctx.fillRect(0, GROUND_Y + 6, groundW, 2);
+    if (Z.lava) {
+      ctx.fillStyle = Z.lava[2]; ctx.fillRect(0, 196, groundW, 4);
+      ctx.fillStyle = Z.lava[0]; ctx.fillRect(0, 196, groundW, 2);
     }
-    const sh = ctx.createLinearGradient(0, FLOOR_Y, 0, FRONT_Y);
-    sh.addColorStop(0, 'rgba(10,12,14,.38)'); sh.addColorStop(0.55, 'rgba(10,12,14,.06)'); sh.addColorStop(1, 'rgba(10,12,14,0)');
-    ctx.fillStyle = sh;
-    ctx.fillRect(0, FLOOR_Y, groundW, FLOOR_H);
-    // beirada: terra (parte de baixo da textura do design), luz na quina e sombra embaixo dela
-    ctx.save();
-    if (P.filter) ctx.filter = P.filter;
-    tiled(TEX.chao, 128, 44, sim.scroll, FRONT_Y, 10, 22);
-    ctx.restore();
-    ctx.fillStyle = P.hi; ctx.fillRect(0, FRONT_Y - 2, groundW, 2);
-    ctx.fillStyle = 'rgba(10,12,14,.45)'; ctx.fillRect(0, FRONT_Y, groundW, 2);
-    if (P.lava) { ctx.fillStyle = '#e0703a'; ctx.fillRect(0, 196, groundW, 4); ctx.fillStyle = '#f8b048'; ctx.fillRect(0, 196, groundW, 1); }
+  }
+  /** Pontas da grama por cima dos pés (desenhado depois dos bichos): "planta" eles no chão. */
+  function drawFrontTufts() {
+    if (A.tile(state.zone, 'ground')) return;
+    tiled(zoneTexture(TEX.chao, state.zone), 128, 8, sim.scroll, FEET - 6, 0, 4);
+  }
+
+  // ---------- Sprites: recortados, nunca reduzidos, em escala inteira ----------
+  const trimCache = new WeakMap();
+  /** Caixa útil (sem margem transparente) da folha: a maior entre os quadros, pra não "pular". */
+  function sheetBox(sheet) {
+    const hit = trimCache.get(sheet.src);
+    if (hit) return hit;
+    const fw = sheet.fw, fh = sheet.fh, frames = sheet.frames || 1;
+    let box = { x: 0, y: 0, w: fw, h: fh };
+    try {
+      const c = document.createElement('canvas');
+      c.width = fw; c.height = fh;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      let x0 = fw, y0 = fh, x1 = -1, y1 = -1;
+      for (let f = 0; f < frames; f++) {
+        g.clearRect(0, 0, fw, fh);
+        g.drawImage(sheet.src, f * fw, 0, fw, fh, 0, 0, fw, fh);
+        const d = g.getImageData(0, 0, fw, fh).data;
+        for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+          if (d[(y * fw + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+      }
+      if (x1 >= 0) box = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    } catch { /* imagem ainda carregando: usa a folha inteira */ return box; }
+    trimCache.set(sheet.src, box);
+    return box;
+  }
+  /**
+   * Tamanho na tela (px do design) de um pixel do sprite: 2 por pixel de arte, nunca menor que 1.
+   * Conta pela altura do quadro inteiro (não do recorte), pra todos os bichos do mesmo tamanho de
+   * folha saírem na mesma escala (um bicho baixinho não pode virar gigante).
+   */
+  function spriteScale(sheet) {
+    const art = Math.max(1, Math.floor(24 / sheet.fh));     // folha 12 px -> 2 pixels de arte por pixel
+    return Math.max(1, Math.round(art * (sheet.size || 1))) * 2;
+  }
+
+  /** Sombra de pixel embaixo do bicho: elipse de 4 linhas, azulada e translúcida. */
+  function footShadow(cx, feetY, spriteW, alpha = 1) {
+    const P = 2, hw = Math.max(6, snap(spriteW * 0.36)), x = snap(cx), y = snap(feetY) - P;
+    ctx.fillStyle = `rgba(28,36,60,${(0.3 * alpha).toFixed(2)})`;
+    ctx.fillRect(x - hw + 2 * P, y, hw * 2 - 4 * P, P);
+    ctx.fillRect(x - hw, y + P, hw * 2, 2 * P);
+    ctx.fillRect(x - hw + 2 * P, y + 3 * P, hw * 2 - 4 * P, P);
   }
 
   /** Quem anda atrás do líder (e onde), conforme "só o líder" / "equipe toda". */
@@ -703,7 +797,8 @@
 
   const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
   /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
-  const HP_FILL = (r) => (r < 0.25 ? ['#d04a3a', '#f08a6a'] : r < 0.5 ? ['#e0a040', '#f8d070'] : ['#4cb848', '#8ae07a']);
+  const HP_FILL = (r) => (r < 0.25 ? ['#c84038', '#f88868'] : r < 0.5 ? ['#d89838', '#f8d070'] : ['#48a850', '#98e070']);
+  const BAR_FRAME = '#1c2030'; // azul-escuro, como o contorno dos sprites (preto puro brigava)
   /**
    * Barra de pixel "redonda": cada pixel é um bloco de 2×2 px do design. Linha de cima e de baixo
    * de moldura, as linhas do meio com o preenchimento (a primeira mais clara), e os cantos vazios.
@@ -712,7 +807,7 @@
   const PX = 2;
   function roundBar(x, y, units, rows, r, [base, hi]) {
     const w = units * PX, iw = w - 2 * PX, ih = rows * PX;
-    ctx.fillStyle = '#0a0c0e';
+    ctx.fillStyle = BAR_FRAME;
     ctx.fillRect(x + PX, y, iw, PX);                 // moldura de cima (sem os cantos)
     ctx.fillRect(x + PX, y + PX + ih, iw, PX);       // de baixo
     ctx.fillRect(x, y + PX, PX, ih);                 // pontas
@@ -725,8 +820,9 @@
     if (rows > 1) { ctx.fillStyle = hi; ctx.fillRect(fx, y + PX, fw, PX); }
   }
   /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
-  function headBars(x, c, isLead) {
-    const UNITS = 22, W2 = UNITS * PX, bx = Math.round(x + BOX / 2 - W2 / 2), by = FEET - BOX_H - 13;
+  function headBars(x, c, isLead, spriteH = BOX_H) {
+    const UNITS = 22, W2 = UNITS * PX, bx = snap(x + BOX / 2 - W2 / 2);
+    const by = snap(FEET - spriteH - (isLead ? 16 : 12)); // logo acima do topo real do sprite
     const r = G.clamp(c.hp / G.maxHp(c), 0, 1);
     roundBar(bx, by, UNITS, 2, r, HP_FILL(r));                  // 4 pixels de altura
     if (!isLead) return;
@@ -752,7 +848,7 @@
   // avanço no ataque: o líder vai 20 px pra frente, o selvagem 16 px pra trás (pro lado do líder)
   function lungeOffset(who) {
     if (!sim.lunge || sim.lunge.who !== who) return 0;
-    return Math.round(Math.sin((Math.PI * sim.lunge.t) / 0.25) * (who === 'lead' ? 20 : 16));
+    return snap(Math.sin((Math.PI * sim.lunge.t) / 0.25) * (who === 'lead' ? 20 : 16));
   }
   const hurt = (who) => sim.hit && sim.hit.who === who && sim.hit.t < 0.25;
 
@@ -781,13 +877,13 @@
     StripUI.update(view(lead));
     if (!state.starterChosen || !lead || state.settings.collapsed) return;
 
-    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * k * FX, dpr * k * SCENE_DY);
+    ctx.setTransform(kd, 0, 0, kd, kd * FX, Math.round(canvas.height - 200 * kd) + kd * SCENE_DY);
     ctx.imageSmoothingEnabled = false;
     ctx.save();
-    if (mirror) { ctx.translate(DW, 0); ctx.scale(-1, 1); }
+    if (mirror) { ctx.translate(axis, 0); ctx.scale(-1, 1); }
     mirrorText = mirror;
     drawGround();
-    if (sim.hit && sim.hit.crit) ctx.translate(Math.round(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
+    if (sim.hit && sim.hit.crit) ctx.translate(snap(Math.sin(sim.hit.t * 90) * 2), 0); // tremidinha no crítico
 
     // a equipe anda em fila atrás do líder (8 quadros por segundo, como no design)
     const walking = sim.phase === 'walk';
@@ -796,16 +892,16 @@
     const team = mates(lead);
     team.forEach(({ c, x }, i) => {
       const still = A.creature(c.species, c.shiny).frames > 1;
-      const dy = still ? 0 : walking ? ((tick + i + 1) % 2 === 0 ? -3 : 0) : (((tick >> 2) + i + 1) % 2 === 0 ? -1 : 0);
-      sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
-      headBars(x, c, false);
+      const dy = still ? 0 : walking ? ((tick + i + 1) % 2 === 0 ? -2 : 0) : (((tick >> 2) + i + 1) % 2 === 0 ? -2 : 0);
+      const sz = sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
+      headBars(x, c, false, sz.h);
     });
     const animated = A.creature(lead.species, lead.shiny).frames > 1;
-    const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -3 : 0) : ((tick >> 2) % 2 === 0 ? -1 : 0);
-    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
+    const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -2 : 0) : ((tick >> 2) % 2 === 0 ? -2 : 0);
+    const lsz = sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
       dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1,
     });
-    headBars(leadX + lungeOffset('lead'), lead, true);
+    headBars(leadX + lungeOffset('lead'), lead, true, lsz.h);
     if (resting) text('Z', leadX + BOX - 4 + Math.sin(sim.t * 3) * 2, 104 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
     if (sim.flash > 0) {
       ctx.globalAlpha = sim.flash;
@@ -817,8 +913,8 @@
     // selvagem (olha pra esquerda; foge virado pra direita)
     const w = sim.wild;
     if (w && sim.phase !== 'shake' && sim.phase !== 'caught') {
-      const wx = sim.wildX - lungeOffset('wild');
-      const wbob = sim.phase === 'fight' && !sim.defeated && ((tick >> 1) % 2 === 0) ? -1 : 0;
+      const wx = snap(sim.wildX) - lungeOffset('wild');
+      const wbob = sim.phase === 'fight' && !sim.defeated && ((tick >> 1) % 2 === 0) ? -2 : 0;
       const flash = hurt('wild') && tick % 2 === 0;
       sprite(w.species, w.shiny, wx, {
         flip: !sim.fled, dy: wbob, t: sim.defeated ? 0 : sim.anim,
@@ -827,9 +923,11 @@
       });
     }
 
+    drawFrontTufts();
+
     // cápsula voando / balançando no chão / faíscas da captura
     const cp = capsulePos();
-    if (cp) itemSprite(sim.capsule.item, cp.x, cp.y, 24);
+    if (cp) itemSprite(sim.capsule.item, snap(cp.x), snap(cp.y), 24);
     if (cp && sim.phase === 'caught' && Math.floor(sim.t / 0.25) % 2 === 0) {
       spark(cp.x - 12, cp.y - 8);
       spark(cp.x + 22, cp.y - 14);
@@ -909,7 +1007,7 @@
     const caps = (state.items.capsula || 0) + (state.items.super || 0);
     const over = cursor && hitTest(cursor.x, cursor.y);
     const v = {
-      width: W, height: H, starter: !state.starterChosen || !lead, collapsed: st.collapsed, cardClosed: st.cardClosed,
+      width: W, height: 200 * k, starter: !state.starterChosen || !lead, collapsed: st.collapsed, cardClosed: st.cardClosed,
       card: st.card, fieldW, caps, auto: G.isAuto(state), hot: over && !['lead', 'wild', 'drag'].includes(over) && !over.startsWith('mon:') ? over : null,
       tag: null, bubbles: [], prompt: null, toast: null, mirror, fieldX0: mirror ? Math.round(DW - fieldW) : 0,
     };
@@ -968,8 +1066,8 @@
     if (!state.starterChosen || state.settings.collapsed) return null;
     // bichos no campo; o chão e os arbustos servem pra arrastar; o céu deixa o clique passar
     let fx = x / k - FX;
-    const fy = y / k - SCENE_DY;
-    if (mirror) fx = DW - fx;
+    const fy = (y - oy) / k - SCENE_DY;
+    if (mirror) fx = axis - fx;
     if (fx < 0 || fx > groundW) return null;
     if (fy >= FEET - BOX_H - 14 && fy <= FEET + 4) { // bicho + barrinhas em cima dele
       if (fx >= leadX + 8 && fx <= leadX + BOX - 8) return 'lead';
@@ -978,7 +1076,7 @@
       const m = lead && mates(lead).find((mm) => fx >= mm.x + 10 && fx <= mm.x + BOX - 10);
       if (m) return `mon:${m.c.uid}`;
     }
-    return fy >= FLOOR_Y - 18 ? 'drag' : null;
+    return fy >= GROUND_Y - 34 ? 'drag' : null; // arbustos e chão servem pra arrastar
   }
   // onde dá pra arrastar a faixa: ficha do líder (e a barrinha recolhida) e o chão
   const DRAG_HITS = new Set(['hud', 'drag']);
