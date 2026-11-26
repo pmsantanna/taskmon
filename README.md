@@ -67,6 +67,12 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Creche e ovos**: deixe um casal na **Creche** (ovo na EQUIPE); os ovos chocam sozinhos com o tempo.
 - **Ajustes**: engrenagem no topo da EQUIPE.
 - **MTs**: aba MTs da Loja. Compre ou ache as exclusivas em batalha e ensine pra quem for compatível.
+- **Espécies** ficam todas em [`shared/species.js`](shared/species.js): nome, tipos, atributos, captura,
+  ovos, evoluções, golpes por nível e ficha da Dex, com os campos explicados no topo do arquivo. A ordem
+  do arquivo é a ordem da Dex. Espécie sem pixel art aparece como "?" até ganhar um PNG.
+- **Evoluções** podem ser por nível, por item (pedras na Loja, usadas na EQUIPE) e com condições (sexo,
+  item segurado, zona, dia/noite); com mais de uma, o bicho ramifica. Gotinha vira Maré no NV16 ou
+  Tempestade com a Pedra do Trovão; Brotinho vira Ipê de dia ou Dama-da-Noite de noite.
 - **Tipos**: cada espécie tem um ou dois tipos, como no original (Capivarão é Normal/Água, Vagalume é
   Elétrico/Voador, Pipa é Normal/Voador, Lampião é Fogo/Elétrico, Boitatá é Fogo/Planta). Contra dois
   tipos os multiplicadores se multiplicam (4× ou ¼×), golpe de qualquer um dos tipos ganha o bônus de
@@ -202,8 +208,9 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 |---|---|
 | `main.js` | Processo principal: janela transparente acima da taskbar, bandeja, save em disco |
 | `preload.js` | Ponte segura (`window.bridge`) entre as páginas e o main |
-| `shared/game.js` | **Regras**: espécies, tipos, zonas, batalha, XP, captura, offline. Sem DOM, roda no Node |
-| `shared/moves.js` | **Golpes** (físico, mágico, status) e o que cada espécie aprende por nível |
+| `shared/species.js` | **Espécies**: todos os bichos, evoluções, golpes por nível e fichas da Dex |
+| `shared/game.js` | **Regras**: tipos, zonas, batalha, XP, evolução, captura, offline. Sem DOM, roda no Node |
+| `shared/moves.js` | **Golpes** (físico, mágico, status) e MTs |
 | `shared/items.js` | **Naturezas** e **itens de segurar** |
 | `shared/sprites.js` | **Pixel art** 12×12 de cada criatura, com paleta normal e brilhante |
 | `shared/assets.js` | Sprites/tiles em PNG: folhas animadas, tiles infinitos, molduras 9-slice |
@@ -213,7 +220,7 @@ Tudo está explicado em [`assets/sprites/LEIA-ME.txt`](assets/sprites/LEIA-ME.tx
 | `renderer/*.html` | Casca das janelas (faixa e painéis) |
 | `renderer/strip-ui.js`, `renderer/strip.css` | Ficha, cards, balões e botões da faixa (HTML por cima do canvas) |
 | `renderer/win.css`, `renderer/fonts.css` | Kit visual dos painéis (Layout B) e as fontes de pixel |
-| `shared/dex.js` | Fichas da Dex: categoria, altura, peso, habitat, descrição |
+| `shared/dex.js` | Lê as fichas da Dex do `species.js` (altura e peso formatados) |
 | `assets/icon.png` | Ícone do app e da bandeja (256×256) |
 | `assets/sprites/` | Sprites que vão junto no build + `LEIA-ME.txt` + `_exemplos/` |
 

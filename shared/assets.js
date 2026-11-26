@@ -130,7 +130,8 @@
     if (cache.has(ck)) return cache.get(ck);
     const heldDef = root.Items && root.Items.HELD[id];
     const grit = id.startsWith('esforco');
-    const img = files[`items/${id}.png`] || (!grit && !heldDef && id !== 'capsula' && files['items/capsula.png']);
+    const drawn = !!SP.SPRITES[id]; // pixel art embutida (ex.: pedras de evolução)
+    const img = files[`items/${id}.png`] || (!grit && !heldDef && !drawn && id !== 'capsula' && files['items/capsula.png']);
     let sheet;
     if (img) sheet = makeSheet(img, `items/${id}.png`);
     else if (heldDef) {
@@ -141,7 +142,8 @@
       const tier = Number(id.slice(-1)) - 1;
       const base = SP.getSprite('_grit');
       sheet = { ...gridSheet('_grit', false), key: id, src: tier ? hueShift(base, [0, 200, 120, 300][tier]) : base };
-    } else sheet = gridSheet('_capsula', false);
+    } else if (drawn) sheet = gridSheet(id, false);
+    else sheet = gridSheet('_capsula', false);
     cache.set(ck, sheet);
     return sheet;
   }

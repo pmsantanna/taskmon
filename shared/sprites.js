@@ -334,6 +334,57 @@
     },
   };
 
+  // Evoluções ramificadas que reaproveitam o desenho de outra forma (from) com cores próprias.
+  SPRITES.tempestade = {
+    from: 'mare',
+    pal: { k: K, a: '#3b4a7a', b: '#facc15', w: '#e0f2fe' },
+    shiny: { a: '#7a3b6a', b: '#a5f3fc' },
+  };
+  SPRITES.damadanoite = {
+    from: 'ipe',
+    pal: { k: K, p: '#6d28d9', a: '#f5f3ff', b: '#365314' },
+    shiny: { p: '#be123c', a: '#ffe4e6' },
+  };
+  // Pedras de evolução: o mesmo formato com a cor de cada uma (o id é o do item, em shared/game.js SHOP).
+  SPRITES._pedra = {
+    rows: [
+      '............',
+      '............',
+      '.....kk.....',
+      '....kbak....',
+      '...kbaaak...',
+      '..kbaaaaak..',
+      '..kaaaaaak..',
+      '..kaaaaadk..',
+      '...kaaadk...',
+      '....kddk....',
+      '.....kk.....',
+      '............',
+    ],
+    pal: { k: K, a: '#a8a29e', b: '#f5f5f4', d: '#57534e' },
+  };
+  const STONE = { pedra_fogo: ['#f97316', '#fed7aa', '#9a3412'], pedra_agua: ['#3b82f6', '#bfdbfe', '#1e3a8a'], pedra_folha: ['#22c55e', '#bbf7d0', '#14532d'], pedra_trovao: ['#facc15', '#fef9c3', '#854d0e'] };
+  for (const [id, [a, b, d]] of Object.entries(STONE)) SPRITES[id] = { from: '_pedra', pal: { k: K, a, b, d } };
+
+  // Espécie nova sem pixel art: um "?" até ganhar um desenho aqui ou um PNG na pasta de sprites.
+  SPRITES._desconhecido = {
+    rows: [
+      '............',
+      '....kkkk....',
+      '...kwwwwk...',
+      '..kwwkkwwk..',
+      '..kkk..kwk..',
+      '......kwwk..',
+      '.....kwwk...',
+      '.....kwk....',
+      '.....kkk....',
+      '.....kwk....',
+      '.....kkk....',
+      '............',
+    ],
+    pal: { k: K, w: '#e7e5e4' },
+  };
+
   const SIZE = 12;
   const cache = new Map();
 
@@ -341,14 +392,14 @@
   function getSprite(id, shiny = false) {
     const key = id + (shiny ? ':s' : '');
     if (cache.has(key)) return cache.get(key);
-    const def = SPRITES[id];
-    if (!def) throw new Error('Sprite desconhecido: ' + id);
+    const def = SPRITES[id] || SPRITES._desconhecido;
+    const rows = def.rows || (SPRITES[def.from] || SPRITES._desconhecido).rows;
     const pal = shiny ? { ...def.pal, ...(def.shiny || {}) } : def.pal;
     const canvas = document.createElement('canvas');
     canvas.width = SIZE;
     canvas.height = SIZE;
     const ctx = canvas.getContext('2d');
-    def.rows.forEach((row, y) => {
+    rows.forEach((row, y) => {
       [...row].forEach((ch, x) => {
         if (ch === '.') return;
         ctx.fillStyle = pal[ch];

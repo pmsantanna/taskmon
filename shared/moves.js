@@ -119,28 +119,7 @@
     debater:      { name: 'Debater-se', type: 'normal', cat: 'fisico', power: 50, acc: null, pp: 0, recoil: 1 / 4, typeless: true },
   };
 
-  // nível -> golpes aprendidos. As evoluções repetem a lista da forma anterior.
-  const L_PAVIO = { 1: ['trombada', 'rosnado'], 4: ['fagulha'], 8: ['fogo_fatuo'], 11: ['bote'], 14: ['soco_brasa'] };
-  const L_GOTA = { 1: ['trombada', 'encarada'], 4: ['borbulha'], 8: ['casca_agua'], 11: ['neblina'], 14: ['jato_agua'] };
-  const L_BROTO = { 1: ['trombada', 'rosnado'], 4: ['semente'], 8: ['po_sono'], 11: ['folha'], 14: ['polen'] };
-  const L_CAPI = { 1: ['trombada', 'rosnado'], 5: ['mordida'], 9: ['soneca'], 13: ['bote'], 16: ['grito'] };
-  const L_SEIXO = { 1: ['trombada', 'endurecer'], 6: ['areia'], 10: ['pedrada'], 16: ['muralha'], 21: ['desmoronar'] };
-
-  const LEARNSETS = {
-    pavio: L_PAVIO,
-    lampiao: { ...L_PAVIO, 16: ['chama_interior'], 21: ['labareda'], 30: ['pancadao'] },
-    gotinha: L_GOTA,
-    mare: { ...L_GOTA, 16: ['agua_fresca'], 20: ['cauda_molhada'], 27: ['onda_forte'] },
-    brotinho: L_BROTO,
-    ipe: { ...L_BROTO, 16: ['raiz'], 22: ['petalas'], 30: ['esmagar'] },
-    capi: L_CAPI,
-    capivarao: { ...L_CAPI, 18: ['esmagar'], 22: ['concentrar'], 28: ['pancadao'] },
-    vagalume: { 1: ['choquinho', 'pisca'], 6: ['estatica'], 10: ['bote'], 12: ['miragem'], 14: ['faisca'], 19: ['zunido'], 24: ['relampago'] },
-    seixo: L_SEIXO,
-    pedregulho: { ...L_SEIXO, 24: ['esmagar'], 32: ['pancadao'] },
-    pipa: { 1: ['bicada', 'encarada'], 5: ['rajada'], 9: ['corrente_ar'], 13: ['rasante'], 16: ['miragem', 'concentrar'], 19: ['ciclone'] },
-    boitata: { 1: ['fagulha', 'fogo_fatuo', 'chama_interior'], 24: ['labareda'], 32: ['erupcao'] },
-  };
+  // Golpes aprendidos por nível: ficam em shared/species.js (campo learnset de cada espécie).
 
   // ---------- MTs (máquinas de técnica) ----------
   // Reutilizáveis: comprou/achou uma vez, ensina pra quantas criaturas compatíveis quiser.
@@ -218,7 +197,7 @@
     return out;
   }
 
-  const api = { MOVES, LEARNSETS, CATEGORY, STATUS, STAT_LABEL, TMS, tmCompatible, describeMove };
+  const api = { MOVES, CATEGORY, STATUS, STAT_LABEL, TMS, tmCompatible, describeMove };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Moves = api;
 })(typeof window !== 'undefined' ? window : globalThis);

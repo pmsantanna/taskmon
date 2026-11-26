@@ -4,7 +4,8 @@
 (function (root) {
   'use strict';
   const MV = root.Moves || require('./moves.js');
-  const { MOVES, LEARNSETS, TMS, tmCompatible } = MV;
+  const { MOVES, TMS, tmCompatible } = MV;
+  const SD = root.SpeciesData || require('./species.js'); // shared/species.js: todos os bichos
   const IT = root.Items || require('./items.js');
   const { NATURES, HELD, WILD_HELD } = IT;
   const NATURE_IDS = Object.keys(NATURES);
@@ -29,32 +30,34 @@
     voador: { planta: 2, eletrico: 0.5, pedra: 0.5 },
   };
 
-  // ---------- Espécies (todas originais) ----------
+  // ---------- Espécies (dados em shared/species.js) ----------
   // atk/def = físico, mag/res = mágico (ataque e defesa especiais), spd = velocidade.
-  // female = chance de nascer fêmea (null = sem sexo). egg = grupos de ovo ('indefinido' = não põe ovo).
-  // types = um ou dois tipos, como no original (o segundo é opcional).
-  const SPECIES = {
-    capi:       { name: 'Capi',       types: ['normal'],   base: { hp: 60, atk: 45, def: 45, mag: 35, res: 45, spd: 40 },  xp: 40,  catch: 0.55, evolvesTo: 'capivarao', evolveLevel: 18, female: 0.5, egg: ['campo', 'agua'] },
-    capivarao:  { name: 'Capivarão',  types: ['normal', 'agua'],   base: { hp: 95, atk: 70, def: 72, mag: 50, res: 70, spd: 48 },  xp: 110, catch: 0.2, female: 0.5, egg: ['campo', 'agua'] },
-    pavio:      { name: 'Pavio',      types: ['fogo'],     base: { hp: 48, atk: 60, def: 46, mag: 65, res: 50, spd: 60 },  xp: 62,  catch: 0.3,  evolvesTo: 'lampiao', evolveLevel: 16, female: 0.125, egg: ['campo'] },
-    lampiao:    { name: 'Lampião',    types: ['fogo', 'eletrico'],     base: { hp: 76, atk: 90, def: 70, mag: 95, res: 75, spd: 80 },  xp: 150, catch: 0.1, female: 0.125, egg: ['campo'] },
-    gotinha:    { name: 'Gotinha',    types: ['agua'],     base: { hp: 50, atk: 48, def: 55, mag: 55, res: 60, spd: 50 },  xp: 62,  catch: 0.3,  evolvesTo: 'mare', evolveLevel: 16, female: 0.125, egg: ['agua'] },
-    mare:       { name: 'Maré',       types: ['agua'],     base: { hp: 85, atk: 78, def: 82, mag: 85, res: 85, spd: 65 },  xp: 150, catch: 0.1, female: 0.125, egg: ['agua'] },
-    brotinho:   { name: 'Brotinho',   types: ['planta'],   base: { hp: 52, atk: 50, def: 52, mag: 55, res: 55, spd: 45 },  xp: 62,  catch: 0.3,  evolvesTo: 'ipe', evolveLevel: 16, female: 0.125, egg: ['planta'] },
-    ipe:        { name: 'Ipê',        types: ['planta'],   base: { hp: 88, atk: 80, def: 80, mag: 85, res: 85, spd: 60 },  xp: 150, catch: 0.1, female: 0.125, egg: ['planta'] },
-    vagalume:   { name: 'Vagalume',   types: ['eletrico', 'voador'], base: { hp: 40, atk: 55, def: 35, mag: 70, res: 40, spd: 85 },  xp: 55,  catch: 0.45, female: 0.5, egg: ['inseto'] },
-    seixo:      { name: 'Seixo',      types: ['pedra'],    base: { hp: 45, atk: 55, def: 80, mag: 25, res: 40, spd: 20 },  xp: 58,  catch: 0.45, evolvesTo: 'pedregulho', evolveLevel: 24, female: 0.5, egg: ['mineral'] },
-    pedregulho: { name: 'Pedregulho', types: ['pedra'],    base: { hp: 75, atk: 85, def: 115, mag: 40, res: 60, spd: 25 }, xp: 160, catch: 0.12, female: 0.5, egg: ['mineral'] },
-    pipa:       { name: 'Pipa',       types: ['normal', 'voador'],   base: { hp: 42, atk: 50, def: 38, mag: 45, res: 40, spd: 80 },  xp: 50,  catch: 0.5, female: 0.5, egg: ['voador'] },
-    boitata:    { name: 'Boitatá',    types: ['fogo', 'planta'],     base: { hp: 90, atk: 110, def: 85, mag: 115, res: 90, spd: 95 }, xp: 280, catch: 0.04, legendary: true, female: null, egg: ['indefinido'] },
-  };
-  for (const sp of Object.values(SPECIES)) sp.type = sp.types[0]; // tipo principal (atalho)
+  const SPECIES = {};
+  for (const [id, d] of Object.entries(SD.SPECIES)) {
+    SPECIES[id] = {
+      name: d.name, types: d.types, type: d.types[0], base: d.base, xp: d.xp, catch: d.catch,
+      female: d.female === undefined ? 0.5 : d.female, egg: d.egg || ['indefinido'], legendary: !!d.legendary,
+      evolutions: d.evolutions || [],
+    };
+  }
   /** Tipos de uma espécie ou criatura (1 ou 2). */
   const typesOf = (x) => SPECIES[typeof x === 'string' ? x : x.species].types;
+  const SPECIES_ORDER = Object.keys(SPECIES); // a ordem do arquivo é a ordem da Dex
+  const STARTERS = SPECIES_ORDER.filter((id) => SD.SPECIES[id].starter);
+  /** De quem essa espécie evolui (ou null). */
+  const prevOf = (sp) => SPECIES_ORDER.find((k) => SPECIES[k].evolutions.some((e) => e.to === sp)) || null;
 
-  const SPECIES_ORDER = ['pavio', 'lampiao', 'gotinha', 'mare', 'brotinho', 'ipe', 'capi', 'capivarao',
-    'vagalume', 'seixo', 'pedregulho', 'pipa', 'boitata'];
-  const STARTERS = ['pavio', 'gotinha', 'brotinho'];
+  // Golpes por nível: as evoluções herdam a lista da forma anterior (e o que vem no arquivo soma por cima).
+  const LEARNSETS = {};
+  function buildLearnset(id, guard = 0) {
+    if (LEARNSETS[id]) return LEARNSETS[id];
+    const prev = guard < 8 ? prevOf(id) : null;
+    const own = SD.SPECIES[id].learnset || {};
+    const merged = { ...(prev ? buildLearnset(prev, guard + 1) : {}) };
+    for (const [lv, list] of Object.entries(own)) merged[lv] = list.filter((m) => MOVES[m]);
+    return (LEARNSETS[id] = merged);
+  }
+  SPECIES_ORDER.forEach((id) => buildLearnset(id));
 
   // ---------- Zonas ----------
   // unlock = nível do líder necessário. pool = peso de cada espécie.
@@ -73,6 +76,11 @@
     esforco2: { name: 'Cascalho de Esforço', price: 120, grit: [3, 5] },
     esforco3: { name: 'Pedrisco de Esforço', price: 300, grit: [6, 8] },
     esforco4: { name: 'Rocha de Esforço', price: 800, grit: [9, 9] },
+    // Itens de evolução (evo: true): usados na EQUIPE em quem evolui com eles (shared/species.js).
+    pedra_fogo:   { name: 'Pedra de Fogo', price: 1500, evo: true },
+    pedra_agua:   { name: 'Pedra da Água', price: 1500, evo: true },
+    pedra_folha:  { name: 'Pedra da Folha', price: 1500, evo: true },
+    pedra_trovao: { name: 'Pedra do Trovão', price: 1500, evo: true },
   };
   const GRIT_ITEMS = ['esforco1', 'esforco2', 'esforco3', 'esforco4'];
 
@@ -585,8 +593,74 @@
     c.sleep = 0;
   }
 
-  /** Dá XP e devolve os eventos (subiu de nível, evoluiu). Mexe em `c`. */
-  function gainXp(c, amount, autoReplace = true) {
+  // ---------- Evoluções ----------
+  // Cada espécie tem uma lista de evoluções (shared/species.js). Vale a primeira cujas condições batem.
+  const isNight = (now = new Date()) => { const h = now.getHours(); return h < 6 || h >= 18; };
+
+  /** As condições "de contexto" (sexo, item segurado, zona, horário) batem? */
+  function evoConditions(c, e, ctx = {}) {
+    if (e.gender && c.gender !== e.gender) return false;
+    if (e.held && c.held !== e.held) return false;
+    if (e.zone && ctx.zone !== e.zone) return false;
+    if (e.time && (e.time === 'noite') !== isNight(ctx.now)) return false;
+    return true;
+  }
+
+  /** Evolução por nível que vale agora (ou null). */
+  function levelEvolution(c, ctx) {
+    return SPECIES[c.species].evolutions.find((e) => !e.item && e.level != null && c.level >= e.level && SPECIES[e.to] && evoConditions(c, e, ctx)) || null;
+  }
+
+  /** Evolução com esse item que vale agora (ou null). */
+  function itemEvolution(c, item, ctx) {
+    return SPECIES[c.species].evolutions.find((e) => e.item === item && (e.level == null || c.level >= e.level) && SPECIES[e.to] && evoConditions(c, e, ctx)) || null;
+  }
+
+  /** Troca a espécie, mantém a proporção do HP, gasta o item segurado (se for condição) e aprende os golpes novos. */
+  function evolve(c, e, autoReplace = true) {
+    const from = c.species;
+    const ratio = c.hp / maxHp(c);
+    c.species = e.to;
+    if (e.held) c.held = null;
+    c.hp = Math.round(maxHp(c) * ratio);
+    const events = [{ type: 'evolve', from, to: c.species, how: e.item ? 'item' : 'level' }];
+    for (const id of movesUpTo(c.species, c.level)) {
+      if (c.known.includes(id)) continue;
+      const r = learnMove(c, id, autoReplace);
+      if (r) events.push(r);
+    }
+    return events;
+  }
+
+  /** Usa um item de evolução da mochila. Devolve os eventos (ou null se não serve pra esse bicho). */
+  function evolveWithItem(state, c, item, ctx = {}) {
+    if (!c || !(state.items[item] > 0)) return null;
+    const e = itemEvolution(c, item, { zone: state.zone, ...ctx });
+    if (!e) return null;
+    state.items[item]--;
+    const events = evolve(c, e, state.settings.autoMoves !== false);
+    state.dex.seen[c.species] = true;
+    state.dex.caught[c.species] = true;
+    return events;
+  }
+
+  /** Quem evolui com esse item: [{ from, to, level? }] (pra mostrar na mochila/loja). */
+  const evoItemTargets = (item) => SPECIES_ORDER.flatMap((from) => SPECIES[from].evolutions.filter((e) => e.item === item).map((e) => ({ from, to: e.to, level: e.level })));
+
+  /** Texto curto das condições de uma evolução: "NV16", "Pedra do Trovão", "NV16 · noite"... */
+  function evoText(e) {
+    const parts = [];
+    if (e.item) parts.push(SHOP[e.item] ? SHOP[e.item].name : e.item);
+    if (e.level != null) parts.push(`NV${e.level}`);
+    if (e.gender) parts.push(e.gender === 'F' ? 'fêmea' : 'macho');
+    if (e.held) parts.push(`segurando ${HELD[e.held] ? HELD[e.held].name : e.held}`);
+    if (e.zone) { const z = ZONES.find((zz) => zz.id === e.zone); parts.push(z ? `em ${z.name}` : e.zone); }
+    if (e.time) parts.push(e.time === 'noite' ? 'de noite' : 'de dia');
+    return parts.join(' · ');
+  }
+
+  /** Dá XP e devolve os eventos (subiu de nível, evoluiu). Mexe em `c`. ctx = { zone } pras evoluções. */
+  function gainXp(c, amount, autoReplace = true, ctx = {}) {
     ensureMoves(c);
     const events = [];
     c.xp += amount;
@@ -596,16 +670,11 @@
       c.level++;
       c.hp += maxHp(c) - before;
       events.push({ type: 'levelup', level: c.level });
-      const sp = SPECIES[c.species];
-      if (sp.evolvesTo && c.level >= sp.evolveLevel) {
-        const from = c.species;
-        const ratio = c.hp / maxHp(c);
-        c.species = sp.evolvesTo;
-        c.hp = Math.round(maxHp(c) * ratio);
-        events.push({ type: 'evolve', from, to: c.species });
-      }
+      const evo = levelEvolution(c, ctx);
+      if (evo) events.push(...evolve(c, evo, autoReplace)); // já aprende os golpes da forma nova até aqui
       // golpes novos deste nível (da forma atual, já evoluída se for o caso)
       for (const id of (LEARNSETS[c.species] || {})[c.level] || []) {
+        if (c.known.includes(id)) continue;
         const r = learnMove(c, id, autoReplace);
         if (r) events.push(r);
       }
@@ -707,9 +776,12 @@
     const lead = getLead(state);
     const auto = state.settings.autoMoves !== false;
     const xpOf = (c) => (c.held && HELD[c.held].xpMult) || 1; // Ovo da Sorte
-    const events = lead ? gainXp(lead, Math.ceil(xp * xpOf(lead)), auto) : [];
+    const ctx = { zone: state.zone };
+    const markEvolved = (evs) => evs.forEach((e) => { if (e.type === 'evolve') { state.dex.seen[e.to] = true; state.dex.caught[e.to] = true; } });
+    const events = lead ? gainXp(lead, Math.ceil(xp * xpOf(lead)), auto, ctx) : [];
+    markEvolved(events);
     for (const c of state.team) {
-      if (c !== lead) gainXp(c, Math.ceil(xp * 0.3 * xpOf(c)), auto);
+      if (c !== lead) markEvolved(gainXp(c, Math.ceil(xp * 0.3 * xpOf(c)), auto, ctx));
     }
     const coinMult = (lead && lead.held && HELD[lead.held].coinMult) || 1; // Moeda da Sorte
     coins *= coinMult;
@@ -795,7 +867,7 @@
 
   function baseSpecies(sp) {
     for (let guard = 0; guard < 5; guard++) {
-      const prev = Object.keys(SPECIES).find((k) => SPECIES[k].evolvesTo === sp);
+      const prev = prevOf(sp);
       if (!prev) break;
       sp = prev;
     }
@@ -1079,7 +1151,7 @@
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
     NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
-    MOVES, LEARNSETS, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
+    MOVES, LEARNSETS, prevOf, evolveWithItem, itemEvolution, levelEvolution, evoItemTargets, evoText, isNight, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
     stats, maxHp, xpToNext, createCreature, typeMult, typesOf, gainXp, xpReward, coinReward,
     movesUpTo, ensureMoves, learnMove, setMoves, restorePp, hasPp,
     battler, effStat, moveDamage, useMove, endOfTurn, firstToAct, chooseMove, afterBattle,

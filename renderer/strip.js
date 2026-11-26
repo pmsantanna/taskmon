@@ -1282,6 +1282,13 @@
       case 'autoMoves':
         state.settings.autoMoves = !!cmd.value;
         break;
+      case 'useEvoItem': { // item de evolução usado na EQUIPE
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        const evs = c && G.evolveWithItem(state, c, cmd.item);
+        if (evs) handleXpEvents(evs, c);
+        else toast('Esse item não serve pra esse bicho');
+        break;
+      }
       case 'setMoves': {
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
         if (c && G.setMoves(c, cmd.moves)) toast(`Golpes de ${G.SPECIES[c.species].name} atualizados`);

@@ -164,7 +164,9 @@
     const soon = [];
     Object.keys(ls).map(Number).filter((l) => l > c.level).sort((a, b) => a - b)
       .forEach((l) => ls[l].forEach((id) => { if (!c.known.includes(id)) soon.push({ l, id }); }));
-    const evo = sp.evolvesTo && c.level < sp.evolveLevel ? `<div class="soon"><span class="ss gold" style="width:40px;font-size:11px">NV${sp.evolveLevel}</span><span class="grow" style="font-size:15px;font-weight:600">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)}</span><span style="display:flex;gap:4px">${typeBadges(sp.evolvesTo)}</span></div>` : '';
+    // evoluções possíveis (por nível ainda não alcançado, ou por item/condição)
+    const evo = sp.evolutions.filter((e) => G.SPECIES[e.to] && (e.item || e.level == null || c.level < e.level || e.gender || e.held || e.zone || e.time)).slice(0, 2)
+      .map((e) => `<div class="soon"><span class="ss gold" style="min-width:40px;font-size:11px;white-space:nowrap">${esc(e.item ? 'ITEM' : e.level != null ? `NV${e.level}` : '—')}</span><span class="grow" style="font-size:14px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(G.SPECIES[e.to].name)} <span class="muted" style="font-size:12px">${esc(G.evoText(e).replace(/^NV\d+( · )?/, ''))}</span></span><span style="display:flex;gap:4px">${typeBadges(e.to)}</span></div>`).join('');
     const fresh = c.known.length - c.moves.length;
     return `
       <div class="sheet" style="flex-shrink:0;position:relative;padding:0 16px 0 48px">
@@ -195,7 +197,7 @@
       </div>
       <div class="inset" style="flex:1;min-height:0;padding:8px 12px;display:flex;flex-direction:column;gap:2px;overflow:hidden">
         <span class="ss" style="font-size:11px;letter-spacing:1px;color:#a8b0a8;line-height:16px">APRENDE EM BREVE</span>
-        ${soon.slice(0, evo ? 3 : 4).map(({ l, id }) => {
+        ${soon.slice(0, Math.max(1, 4 - (evo.match(/class="soon"/g) || []).length)).map(({ l, id }) => {
           const mm = G.MOVES[id];
           return `<div class="soon"><span class="ss gold" style="width:40px;font-size:11px">NV${l}</span><span class="grow" style="font-size:15px;font-weight:600">${esc(mm.name)}</span>${typeBadge(mm.type)}
             <span class="ss" style="width:52px;text-align:right;font-size:10px;color:#a8b0a8">${mm.cat === 'status' ? '—' : `POD ${mm.power}`}</span></div>`;
@@ -229,11 +231,19 @@
         return { id: t, kind: 'tm', name: `${t.toUpperCase()} · ${m.name}`, desc: `${G.TYPE_LABEL[m.type]} · ${m.cat === 'status' ? 'status' : `poder ${m.power}`} · ensine pra quem puder`, qty: '∞', icon: `<span class="ss" style="font-size:10px;color:#f2ecd8">MT</span>`, bg: TYPE_B[m.type], hi: 'rgba(255,255,255,.3)', cmd: 'tmInfo' };
       });
     }
-    return Object.entries(G.SHOP).filter(([id]) => (state.items[id] || 0) > 0).map(([id, it]) => ({
-      id, kind: it.grit ? 'grit' : 'cap', name: it.name, qty: state.items[id],
-      desc: it.grit ? `Esforço nível ${it.grit[0]}${it.grit[1] !== it.grit[0] ? `–${it.grit[1]}` : ''} → +1 (use no STATUS)` : `${it.mult}× chance de captura`,
-      icon: spr(id, { item: true, size: 28 }), bg: it.grit ? '#3a4a5a' : '#2a4048', hi: it.grit ? '#8ab8e8' : '#6fc0c0', cmd: it.grit ? 'gritOpen' : '',
-    }));
+    return Object.entries(G.SHOP).filter(([id]) => (state.items[id] || 0) > 0).map(([id, it]) => {
+      if (it.evo) {
+        const ok = c && G.itemEvolution(c, id, { zone: state.zone });
+        const who = G.evoItemTargets(id).map((t) => `${G.SPECIES[t.from].name} → ${state.dex.seen[t.to] ? G.SPECIES[t.to].name : '???'}`).join(', ');
+        return { id, kind: 'evo', name: it.name, qty: state.items[id], icon: spr(id, { item: true, size: 28 }), bg: '#3a2a4a', hi: '#c0a0f0', cmd: 'evoItem',
+          desc: ok ? `Usar em ${G.SPECIES[c.species].name}: evolui pra ${G.SPECIES[ok.to].name}` : who ? `Evolui: ${who}` : 'Nenhum bicho evolui com ela (ainda)', ready: !!ok };
+      }
+      return {
+        id, kind: it.grit ? 'grit' : 'cap', name: it.name, qty: state.items[id],
+        desc: it.grit ? `Esforço nível ${it.grit[0]}${it.grit[1] !== it.grit[0] ? `–${it.grit[1]}` : ''} → +1 (use no STATUS)` : `${it.mult}× chance de captura`,
+        icon: spr(id, { item: true, size: 28 }), bg: it.grit ? '#3a4a5a' : '#2a4048', hi: it.grit ? '#8ab8e8' : '#6fc0c0', cmd: it.grit ? 'gritOpen' : '',
+      };
+    });
   }
 
   function viewEquipe() {
@@ -288,7 +298,7 @@
             ? `<div class="bagcells">${items.map((b) => `<button class="cell" style="background:${b.bg};box-shadow:inset 0 3px 0 ${b.hi},inset -2px -2px 0 rgba(0,0,0,.4)${b.held ? ';outline:2px solid #e0a040' : ''}" data-cmd="${b.cmd}" data-id="${b.id}" data-uid="${c.uid}" title="${esc(b.name)} — ${esc(b.desc)}">${b.icon}<span class="qty">${b.qty}</span></button>`).join('')}</div>`
             : `<ul style="margin:0;padding:0;list-style:none">${items.map((b) => `<li><button class="lrow" data-cmd="${b.cmd}" data-id="${b.id}" data-uid="${c.uid}">
                 <span class="ico" style="background:${b.bg};box-shadow:inset 0 3px 0 ${b.hi},inset -2px -2px 0 rgba(0,0,0,.4)">${b.icon}</span>
-                <span class="grow" style="display:flex;flex-direction:column;gap:3px"><span style="display:flex;align-items:center;gap:6px"><span class="nm">${esc(b.name)}</span>${b.held ? '<span class="ss" style="font-size:9px;color:#1b1608;background:#e0a040;padding:1px 4px;line-height:1.2">SEGURADO</span>' : ''}</span>
+                <span class="grow" style="display:flex;flex-direction:column;gap:3px"><span style="display:flex;align-items:center;gap:6px"><span class="nm">${esc(b.name)}</span>${b.held ? '<span class="ss" style="font-size:9px;color:#1b1608;background:#e0a040;padding:1px 4px;line-height:1.2">SEGURADO</span>' : ''}${b.ready ? '<span class="ss" style="font-size:9px;color:#1b1608;background:#c0a0f0;padding:1px 4px;line-height:1.2">PODE EVOLUIR</span>' : ''}</span>
                 <span class="ds">${esc(b.desc)}</span></span><span class="ss" style="font-size:13px;color:#d8dcd6">${b.qty}</span></button></li>`).join('')}</ul>`}
       </div>
       <nav class="menu" aria-label="Menu">
@@ -451,7 +461,8 @@
       <span style="display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600;white-space:nowrap">${coin}${fmt(it.price)}</span>
       <button class="pk sm green" data-cmd="buy" data-item="${id}" data-qty="1" ${state.coins < it.price ? 'disabled' : ''}>+1</button>
       ${five ? `<button class="pk sm green" data-cmd="buy" data-item="${id}" data-qty="5" ${state.coins < it.price * 5 ? 'disabled' : ''}>+5</button>` : ''}</div>`;
-    const capsI = Object.entries(G.SHOP).filter(([, it]) => !it.grit);
+    const capsI = Object.entries(G.SHOP).filter(([, it]) => !it.grit && !it.evo);
+    const evoI = Object.entries(G.SHOP).filter(([, it]) => it.evo);
     const grit = Object.entries(G.SHOP).filter(([, it]) => it.grit);
     const ids = Object.keys(G.TMS);
     const owned = ids.filter((t) => G.hasTm(state, t)).length;
@@ -470,6 +481,10 @@
     return `${tabs}<div class="inset scroll" style="flex:1;min-height:0;padding:2px">
         <div style="padding:6px 8px"><span class="lbl">CÁPSULAS</span></div>${capsI.map(([id, it]) => row(id, it, `tem ${state.items[id] || 0} · ${it.mult}× chance`, true)).join('')}
         <div style="padding:10px 8px 6px"><span class="lbl">ESFORÇO</span></div>${grit.map(([id, it]) => row(id, it, `tem ${state.items[id] || 0} · nível ${it.grit[0]}${it.grit[1] !== it.grit[0] ? `–${it.grit[1]}` : ''} → +1`, true)).join('')}
+        <div style="padding:10px 8px 6px"><span class="lbl">EVOLUÇÃO</span></div>${evoI.map(([id, it]) => {
+          const who = G.evoItemTargets(id).map((t) => (state.dex.seen[t.from] ? G.SPECIES[t.from].name : '???')).join(', ');
+          return row(id, it, `tem ${state.items[id] || 0} · ${who ? `evolui ${who}` : 'nenhum bicho usa ainda'}`, false);
+        }).join('')}
         <div style="padding:10px 8px 6px"><span class="lbl">ITENS DE SEGURAR</span></div>${Object.entries(G.HELD).map(([id, it]) => row(id, it, `${state.items[id] ? `${state.items[id]} na mochila · ` : ''}${it.desc}`, false)).join('')}
       </div>
       <span class="muted" style="font-size:13px;flex-shrink:0">Dê itens de segurar na EQUIPE (quadradinho do item).</span>`;
@@ -488,12 +503,13 @@
     let detail;
     if (!seen) detail = '<p class="prose muted">Ainda não visto. Continue explorando!</p>';
     else if (ui.dexTab === 'area') {
+      const evoLines = sp.evolutions.filter((e) => G.SPECIES[e.to]).map((e) => `<span class="muted" style="font-size:13px">Evolui pra ${esc(state.dex.seen[e.to] ? G.SPECIES[e.to].name : '???')}: ${esc(G.evoText(e))}.</span>`).join('');
       const zones = G.ZONES.filter((z) => z.pool[id]);
       detail = zones.length ? zones.map((z) => {
         const total = Object.values(z.pool).reduce((t, w) => t + w, 0);
         return `<div style="display:flex;align-items:center;gap:8px;height:22px"><b style="font-size:15px;color:#f2ecd8">${esc(z.name)}</b><span class="muted" style="font-size:13px">nível ${z.levels[0]}–${z.levels[1]}</span><span class="ss gold" style="margin-left:auto;font-size:11px">${Math.round((z.pool[id] / total) * 100)}%</span></div>`;
-      }).join('') + (sp.evolvesTo ? `<span class="muted" style="font-size:13px">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)} no nível ${sp.evolveLevel}.</span>` : '')
-        : `<p class="prose muted">Não aparece na natureza. Evolui de outra espécie.</p>${sp.evolvesTo ? `<span class="muted" style="font-size:13px">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)} no nível ${sp.evolveLevel}.</span>` : ''}`;
+      }).join('') + evoLines
+        : `<p class="prose muted">Não aparece na natureza. ${G.prevOf(id) ? `Evolui de ${esc(G.SPECIES[G.prevOf(id)].name)}.` : ''}</p>${evoLines}`;
     } else if (ui.dexTab === 'types') {
       // fraquezas e resistências contra cada tipo de golpe (com dois tipos, os multiplicadores se somam)
       const groups = [[4, '4×', '#c0402e'], [2, '2×', '#e0a040'], [0.5, '½×', '#6f9a4a'], [0.25, '¼×', '#3a6a9a']];
@@ -727,6 +743,13 @@
       case 'genes': set({ genes: !ui.genes }); break;
       case 'grit': send({ type: 'grit', uid: d.uid, stat: d.stat }); break;
       case 'gritOpen': bridge.selectCreature(d.uid); bridge.openPanel('status'); break;
+      case 'evoItem': {
+        const c = byUid(d.uid);
+        const e = c && G.itemEvolution(c, d.id, { zone: state.zone });
+        if (!e) break; // a linha já diz quem usa
+        if (confirm(`Usar ${G.SHOP[d.id].name} em ${G.SPECIES[c.species].name}? Ele vai evoluir pra ${G.SPECIES[e.to].name}.`)) send({ type: 'useEvoItem', uid: c.uid, item: d.id });
+        break;
+      }
       case 'mv':
         if (ui.move === d.move) openModal({ kind: 'move', id: d.move, uid: current()?.uid });
         else set({ move: d.move });
