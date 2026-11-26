@@ -33,8 +33,8 @@
     ui.innerHTML = `
       <div id="full">
         <div id="field">
-          <div id="tag" class="hide"><div class="main"><div class="row ss"><span id="t-name" style="color:#ead9b0"></span><span id="t-lv" style="color:#e0a040"></span></div><div class="bar5"><i id="t-hp"></i></div></div><div class="types ss" id="t-types"></div></div>
-          <div id="ltypes" class="types ss hide"></div>
+          <div id="tag" class="tagbox hide"></div>
+          <div id="ltag" class="tagbox hide"></div>
           <div id="bubbles"></div>
           <div id="toast" class="bubble wide hide"><span id="ts-t"></span><small id="ts-s"></small></div>
           <div id="prompt" class="hide" role="group">
@@ -205,6 +205,32 @@
   }
 
   /**
+   * Etiqueta de um bicho (selvagem ou líder): nome, NV, status, HP (e EXP do líder) e os selos de
+   * tipo de um lado. T = { x, y, name, lv, st, hp: { r, base, hi }, xp, types, chips: 'left'|'right' }.
+   */
+  function tagBox(id, T) {
+    show(id, `${id}s`, T);
+    if (!T) return;
+    const el = els[id];
+    set(id, `${id}pos`, `${T.x},${T.y}`, () => { el.style.left = `${T.x}px`; el.style.top = `${T.y}px`; });
+    set(id, `${id}side`, T.chips, (e, side) => e.classList.toggle('chips-left', side === 'left'));
+    const key = `${T.name}|${T.st ? T.st.short : ''}|${T.xp != null}|${T.types.map((t) => t.label).join('/')}`;
+    set(id, `${id}html`, key, (e) => {
+      e.innerHTML = `<div class="main"><div class="row ss"><span class="nm">${esc(T.name)}</span><span class="lv"></span>${T.st ? `<span class="stc" style="background:${T.st.color}">${esc(T.st.short)}</span>` : ''}</div>
+        <div class="pbar hp"><i></i></div>${T.xp != null ? '<div class="pbar xp"><i></i></div>' : ''}</div>
+        <div class="types ss">${T.types.map((t) => `<span class="tchip" style="--b:${t.base};--l:${t.light};--d:${t.dark}">${esc(t.label)}</span>`).join('')}</div>`;
+      last[`${id}lv`] = last[`${id}hp`] = last[`${id}xp`] = null;
+    });
+    set(id, `${id}lv`, T.lv, (e, lv) => { e.querySelector('.lv').textContent = `NV${lv}`; });
+    set(id, `${id}hp`, `${Math.round(T.hp.r * 100)}:${T.hp.base}`, () => {
+      const i = el.querySelector('.hp > i');
+      i.style.width = `${(T.hp.r * 100).toFixed(1)}%`;
+      i.style.setProperty('--b', T.hp.base); i.style.setProperty('--l', T.hp.hi);
+    });
+    if (T.xp != null) set(id, `${id}xp`, Math.round(T.xp * 100), (e, x) => { el.querySelector('.xp > i').style.width = `${x}%`; });
+  }
+
+  /**
    * view = { width, height, starter, collapsed, cardClosed, card, fieldW, lead, tag, bubbles, prompt,
    *          toast, area, egg, eggs, eggsMax, daycareHint, today, caps, auto, mini, hot }
    */
@@ -233,32 +259,8 @@
     show('card-mini', 'cardc', v.cardClosed);
     card(v);
 
-    show('tag', 'tags', v.tag);
-    if (v.tag) {
-      const T = v.tag;
-      set('tag', 'tagpos', `${T.x},${T.y}`, (el) => { el.style.left = `${T.x}px`; el.style.top = `${T.y}px`; });
-      text('t-name', 'tn', T.name);
-      text('t-lv', 'tlv', `NV${T.lv}`);
-      bar('t-hp', 'thp', T.r, hpColor(T.r));
-      set('t-types', 'ttypes', T.types.map((t) => t.label).join('/'), (el) => {
-        el.innerHTML = T.types.map((t) => `<span class="tchip" style="--b:${t.base};--l:${t.light};--d:${t.dark}">${esc(t.label)}</span>`).join('');
-      });
-    }
-
-    show('ltypes', 'lts', v.leadTypes);
-    if (v.leadTypes) {
-      const LT = v.leadTypes;
-      // ancorada na ponta da frente das barrinhas: cresce pra trás (pra esquerda quando a frente é a direita)
-      set('ltypes', 'ltpos', `${LT.x},${LT.y},${LT.front}`, (el) => {
-        el.style.left = `${LT.x}px`; el.style.top = `${LT.y}px`;
-        el.style.transform = LT.front === 'right' ? 'translateX(-100%)' : 'none';
-      });
-      const key = `${LT.lv}|${LT.st ? LT.st.short : ''}|${LT.types.map((t) => t.label).join('/')}`;
-      set('ltypes', 'ltt', key, (el) => {
-        el.innerHTML = `<span class="lv">NV${LT.lv}</span>${LT.st ? `<span class="stc" style="background:${LT.st.color}">${esc(LT.st.short)}</span>` : ''}`
-          + LT.types.map((t) => `<span class="tchip" style="--b:${t.base};--l:${t.light};--d:${t.dark}">${esc(t.label)}</span>`).join('');
-      });
-    }
+    tagBox('tag', v.tag);   // selvagem (só na luta)
+    tagBox('ltag', v.ltag); // líder (sempre)
     bubbles(v.bubbles, v.fieldW);
 
     show('prompt', 'ps', v.prompt);

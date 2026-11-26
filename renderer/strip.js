@@ -22,6 +22,7 @@
   const BOX_H = 48;
   const GAP = 52;          // distância entre os bichos da fila
   const SCENE_DY = 24;
+  const TAG_GAP = 144;     // distância líder -> selvagem (centro a centro)
   const snap = (v) => Math.round(v / 2) * 2; // posições sempre em pixel de arte inteiro (2 px do design)
   // O card e os botões ficam na borda da tela e os bichos andam pro meio dela (ver layout()).
   let mirror = false, mirrorText = false;
@@ -78,15 +79,14 @@
     // abrir/fechar ele não mexe na cena.
     const CARD = 148;
     sceneFlip = !mirror;                                // mirror = card à esquerda (vem do main)
-    // a linha do líder (NV, status, tipos) cresce pra trás: sozinho, ele se afasta um pouco do card
-    const ld = G.getLead(state);
-    const rowW = ld ? 28 + G.typesOf(ld).length * 48 + (ld.status ? 22 : 0) : 0;
-    leadX = snap(Math.max(CARD + 12 + GAP * (n - 1), CARD + rowW - 46));
-    wildTargetX = leadX + 110;
+    // etiquetas centralizadas em cima de cada um (até ~140 de largura): o líder sozinho se afasta um
+    // pouco do card e o selvagem fica longe o bastante pras duas etiquetas não se encostarem
+    leadX = snap(Math.max(CARD + 12 + GAP * (n - 1), CARD + 40));
+    wildTargetX = leadX + TAG_GAP;
     fieldX0 = Math.round(DW - fieldW);                  // início (lógico) da parte visível do chão
     enterX = DW + 10;                                   // o selvagem entra pela borda aberta
     // largura mínima pra caber a fila inteira (a largura normal vem da bandeja)
-    const need = 24 + GAP * (n - 1) + 110 + BOX + 20 + CARD;
+    const need = 24 + GAP * (n - 1) + TAG_GAP + BOX + 60 + CARD;
     if (need !== layout.need) { layout.need = need; if (bridge.stripWidth) bridge.stripWidth(need); }
     if (sim && sim.wild && FIGHTING.includes(sim.phase)) sim.wildX = wildTargetX;
   }
@@ -817,41 +817,7 @@
     return state.team.filter((c) => c !== lead).map((c, i) => ({ c, x: leadX - GAP * (i + 1) - (i === 0 ? 2 : 0) })).filter((m) => m.x > -BOX);
   }
 
-  const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
-  /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
   const HP_FILL = (r) => (r < 0.25 ? ['#c84038', '#f88868'] : r < 0.5 ? ['#d89838', '#f8d070'] : ['#48a850', '#98e070']);
-  const BAR_FRAME = '#1c2030'; // azul-escuro, como o contorno dos sprites (preto puro brigava)
-  /**
-   * Barra de pixel "redonda": cada pixel é um bloco de 2×2 px do design. Linha de cima e de baixo
-   * de moldura, as linhas do meio com o preenchimento (a primeira mais clara), e os cantos vazios.
-   * Espelhada, enche a partir da direita lógica (= esquerda na tela).
-   */
-  const PX = 2;
-  function roundBar(x, y, units, rows, r, [base, hi]) {
-    const w = units * PX, iw = w - 2 * PX, ih = rows * PX;
-    ctx.fillStyle = BAR_FRAME;
-    ctx.fillRect(x + PX, y, iw, PX);                 // moldura de cima (sem os cantos)
-    ctx.fillRect(x + PX, y + PX + ih, iw, PX);       // de baixo
-    ctx.fillRect(x, y + PX, PX, ih);                 // pontas
-    ctx.fillRect(x + w - PX, y + PX, PX, ih);
-    ctx.fillStyle = '#262a30'; ctx.fillRect(x + PX, y + PX, iw, ih); // vazio
-    const fw = Math.round((iw / PX) * r) * PX;
-    if (!fw) return;
-    const fx = mirrorText ? x + PX + iw - fw : x + PX;
-    ctx.fillStyle = base; ctx.fillRect(fx, y + PX, fw, ih);
-    if (rows > 1) { ctx.fillStyle = hi; ctx.fillRect(fx, y + PX, fw, PX); }
-  }
-  /** Barrinhas em cima da cabeça: HP (todos) e EXP + nível (líder). */
-  function headBars(x, c, isLead, spriteH = BOX_H) {
-    const UNITS = 22, W2 = UNITS * PX, bx = snap(x + BOX / 2 - W2 / 2);
-    const by = snap(FEET - spriteH - (isLead ? 16 : 12)); // logo acima do topo real do sprite
-    const r = G.clamp(c.hp / G.maxHp(c), 0, 1);
-    roundBar(bx, by, UNITS, 2, r, HP_FILL(r));                  // 4 pixels de altura
-    if (!isLead) return;
-    sim.leadBar = { x: bx, y: by, w: W2, h: 12 }; // a camada HTML põe os selos de tipo ao lado
-    roundBar(bx, by + 3 * PX, UNITS, 1, G.clamp(c.xp / G.xpToNext(c.level), 0, 1), ['#5a8ed0', '#8ab8f0']); // EXP colada embaixo (divide a moldura)
-    // nível, status e tipos do líder: linha HTML em cima das barrinhas (strip-ui, #ltypes)
-  }
 
   /** Faísca em "+" de 4 px (captura). */
   function spark(x, y) {
@@ -907,15 +873,13 @@
     team.forEach(({ c, x }, i) => {
       const still = A.creature(c.species, c.shiny).frames > 1;
       const dy = still ? 0 : walking ? ((tick + i + 1) % 2 === 0 ? -2 : 0) : (((tick >> 2) + i + 1) % 2 === 0 ? -2 : 0);
-      const sz = sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
-      headBars(x, c, false, sz.h);
+      sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
     });
     const animated = A.creature(lead.species, lead.shiny).frames > 1;
     const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -2 : 0) : ((tick >> 2) % 2 === 0 ? -2 : 0);
-    const lsz = sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
+    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
       dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1,
     });
-    headBars(leadX + lungeOffset('lead'), lead, true, lsz.h);
     if (resting) text('Z', leadX + BOX - 4 + Math.sin(sim.t * 3) * 2, 104 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
     if (sim.flash > 0) {
       ctx.globalAlpha = sim.flash;
@@ -1047,25 +1011,22 @@
     v.today = { active: `${Math.floor(mins / 60)}H${String(mins % 60).padStart(2, '0')}`, caught: td.caught, xp: td.xp, items: td.items };
 
     const w = sim.wild;
+    // etiquetas espelhadas: a informação fica virada pro adversário e os selos de tipo pra fora
+    const tagOf = (c, x, chipsOut, withXp) => {
+      const r = G.clamp(c.hp / G.maxHp(c), 0, 1), [base, hi] = HP_FILL(r);
+      const st = c.status && G.STATUS[c.status];
+      return {
+        x: Math.round(fxp(snap(x) + BOX / 2)), y: 80 + SCENE_DY,
+        name: G.SPECIES[c.species].name.toUpperCase(), lv: c.level, hp: { r, base, hi },
+        xp: withXp ? G.clamp(c.xp / G.xpToNext(c.level), 0, 1) : null,
+        st: st ? { short: st.short.slice(0, 3).toUpperCase(), color: st.color } : null,
+        types: G.typesOf(c).map(typeChip), chips: chipsOut,
+      };
+    };
+    // na tela o líder fica à esquerda do selvagem (andando pra direita) ou à direita (cena espelhada)
+    v.ltag = tagOf(lead, leadX + lungeOffset('lead'), sceneFlip ? 'right' : 'left', true);
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
-      v.tag = {
-        x: Math.round(fxp(snap(sim.wildX) + BOX / 2)), y: 80 + SCENE_DY, // centralizada em cima do selvagem
-        name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1),
-        types: G.typesOf(w).map(typeChip),
-      };
-    }
-    // linha do líder em cima das barrinhas: NV, status e selos de tipo. Começa na ponta da frente
-    // das barrinhas (lado do selvagem) e cresce pra trás, por cima da fila (que não tem rótulo).
-    if (sim.leadBar && state.starterChosen) {
-      const L = sim.leadBar;
-      const st = lead.status && G.STATUS[lead.status];
-      v.leadTypes = {
-        y: Math.round(L.y + SCENE_DY - 13),
-        front: sceneFlip ? 'left' : 'right',
-        x: Math.round(sceneFlip ? axis - (L.x + L.w) : L.x + L.w - fieldX0),
-        lv: lead.level, st: st ? { short: st.short.slice(0, 3).toUpperCase(), color: st.color } : null,
-        types: G.typesOf(lead).map(typeChip),
-      };
+      v.tag = tagOf(w, sim.wildX - lungeOffset('wild'), sceneFlip ? 'left' : 'right', false);
     }
     const cp = capsulePos();
     for (const [who, b] of Object.entries(sim.bubbles)) {

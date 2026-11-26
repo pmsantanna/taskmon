@@ -153,8 +153,7 @@ Feita a partir do design do Claude Design ("Taskmon · interface retrô", Layout
   (1 pixel de arte = 2 px do design) e a janela tem altura múltipla de 100 px físicos, então nada
   fica "tremido". Só aparecem o chão (de ponta a ponta, vista lateral com grama na frente dos pés,
   paleta por zona com luz amarelada e sombra azulada) com arbustos rolando, sombra embaixo de cada bicho, a **equipe inteira
-  andando em fila** (ou só o líder: Ajustes ou bandeja) com barrinhas de HP em cima da cabeça (o líder
-  também tem NV e EXP), os botões **Recolher**, **Painéis**
+  andando em fila** (ou só o líder: Ajustes ou bandeja) com etiquetas espelhadas no líder e no selvagem (nome, NV, HP, EXP do líder e os selos de tipo em inglês, no estilo dos portáteis antigos), os botões **Recolher**, **Painéis**
   e **Mochila** e o card da direita; fora deles o clique passa pra área de trabalho.
   - Balões em cima dos bichos: "!" no encontro, o nome do golpe, "· · ·" na cápsula, PEGOU!, +EXP,
     ESCAPOU!, FUGIU!. Na luta aparece a etiqueta de HP do selvagem e os números de dano.
