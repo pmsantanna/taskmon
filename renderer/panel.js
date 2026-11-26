@@ -45,6 +45,13 @@
   const hpColor = (r) => (r < 0.25 ? '#c0402e' : r < 0.5 ? '#e0a040' : '#6f9a4a');
   const pct = (r) => `${(G.clamp(r, 0, 1) * 100).toFixed(1)}%`;
 
+  /** Evolução manual: evoluções por nível que já dá pra fazer agora (vazio com "evoluir sozinho" ligado). */
+  const readyEvos = (c) => (c && state.settings.autoEvolve === false ? G.availableEvolutions(c, { zone: state.zone }) : []);
+  const evoBtn = (c, label = '▲ EVOLUIR') => {
+    const r = readyEvos(c);
+    return r.length ? `<button class="pk sm on pulse" data-cmd="evolveStart" data-uid="${c.uid}" title="Evoluir agora">${label}</button>` : '';
+  };
+
   /** O bicho escolhido (ou o líder). */
   function current() {
     const c = byUid(sel);
@@ -172,12 +179,13 @@
     Object.keys(ls).map(Number).filter((l) => l > c.level).sort((a, b) => a - b)
       .forEach((l) => ls[l].forEach((id) => { if (!c.known.includes(id)) soon.push({ l, id }); }));
     // evoluções possíveis (por nível ainda não alcançado, ou por item/condição)
-    const evo = sp.evolutions.filter((e) => G.SPECIES[e.to] && (e.item || e.level == null || c.level < e.level || e.gender || e.held || e.zone || e.time)).slice(0, 2)
-      .map((e) => `<div class="soon"><span class="ss gold" style="min-width:40px;font-size:11px;white-space:nowrap">${esc(e.item ? 'ITEM' : e.level != null ? `NV${e.level}` : '—')}</span><span class="grow" style="font-size:14px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(G.SPECIES[e.to].name)} <span class="muted" style="font-size:12px">${esc(G.evoText(e).replace(/^NV\d+( · )?/, ''))}</span></span><span style="display:flex;gap:4px">${typeBadges(e.to)}</span></div>`).join('');
+    const ready = readyEvos(c).map((e) => e.to);
+    const evo = sp.evolutions.filter((e) => G.SPECIES[e.to] && (ready.includes(e.to) || e.item || e.level == null || c.level < e.level || e.gender || e.held || e.zone || e.time)).slice(0, 2)
+      .map((e) => `<div class="soon"><span class="ss gold" style="min-width:40px;font-size:11px;white-space:nowrap">${esc(e.item ? 'ITEM' : e.level != null ? `NV${e.level}` : '—')}</span><span class="grow" style="font-size:14px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(G.SPECIES[e.to].name)} <span class="muted" style="font-size:12px">${esc(G.evoText(e).replace(/^NV\d+( · )?/, ''))}</span></span>${ready.includes(e.to) ? `<button class="pk sm on pulse" data-cmd="evolve" data-uid="${c.uid}" data-to="${e.to}">EVOLUIR</button>` : `<span style="display:flex;gap:4px">${typeBadges(e.to)}</span>`}</div>`).join('');
     const fresh = c.known.length - c.moves.length;
     return `
       <div class="sheet" style="flex-shrink:0;position:relative;padding:0 16px 0 48px">
-        <div style="height:24px;display:flex;align-items:center;gap:6px"><span style="font-size:19px;font-weight:700;line-height:1">${esc(sp.name)}${c.shiny ? ' ✦' : ''}</span>${gender(c)}${statusTag(c.status)}
+        <div style="height:24px;display:flex;align-items:center;gap:6px"><span style="font-size:19px;font-weight:700;line-height:1">${esc(sp.name)}${c.shiny ? ' ✦' : ''}</span>${gender(c)}${statusTag(c.status)}${ready.length ? '<span style="color:#b06a10;font-weight:700" title="Pode evoluir">▲</span>' : ''}
           <span class="ss" style="margin-left:auto;font-size:13px;line-height:1">NV${c.level}</span></div>
         <div style="height:24px;display:flex;align-items:center;gap:8px"><span class="ss" style="font-size:10px;color:#5a4a36;width:30px">EXP</span>
           <div style="flex:1;height:8px;box-sizing:border-box;border:1px solid #2a251c;background:#c4baa2"><div style="width:${pct(c.xp / need)};height:100%;background:#3a6a9a"></div></div>
@@ -226,6 +234,13 @@
   }
 
   function bagItems(c) {
+    const debug = ui.bag === 'itens' && state.settings.debug ? [
+      { id: 'debug_candy', kind: 'debug', name: 'Doce Raro (debug)', qty: '∞', desc: c ? `Sobe ${G.SPECIES[c.species].name} 1 nível` : 'Sobe 1 nível', icon: '<span class="ss" style="font-size:9px;color:#fff">+1</span>', bg: '#7a2a5a', hi: '#f0a0d0', cmd: 'debugLevel' },
+      { id: 'debug_evo', kind: 'debug', name: 'Pedra Coringa (debug)', qty: '∞', desc: c && G.SPECIES[c.species].evolutions.some((e) => G.SPECIES[e.to]) ? `Força a evolução de ${G.SPECIES[c.species].name}` : 'Força a evolução (esse bicho não evolui)', icon: '<span class="ss" style="font-size:10px;color:#fff">▲</span>', bg: '#5a4a1a', hi: '#f0d080', cmd: 'debugEvolve' },
+    ] : [];
+    return [...debug, ...bagItemsReal(c)];
+  }
+  function bagItemsReal(c) {
     if (ui.bag === 'segurar') {
       return Object.entries(G.HELD).filter(([id]) => (state.items[id] || 0) > 0 || c?.held === id).map(([id, it]) => ({
         id, kind: 'held', name: it.name, desc: it.desc, qty: state.items[id] || 0, held: c?.held === id,
@@ -263,10 +278,10 @@
     const nat = G.NATURES[c.nature] || {};
     const held = c.held && G.HELD[c.held];
     const items = bagItems(c);
-    const actions = inTeam
+    const actions = evoBtn(c) + (inTeam
       ? `${c.uid !== lead?.uid ? `<button class="pk sm" data-cmd="setLead" data-uid="${c.uid}" title="Definir como líder">★ LÍDER</button>` : '<span class="pk sm on" style="display:inline-flex;align-items:center">★ LÍDER</span>'}
          <button class="pk sm" data-cmd="toBox" data-uid="${c.uid}" ${state.team.length <= 1 ? 'disabled' : ''} title="Mandar pro Baú">BAÚ</button>`
-      : `<button class="pk sm green" data-cmd="toTeam" data-uid="${c.uid}" ${state.team.length >= G.TEAM_MAX ? 'disabled' : ''}>→ EQUIPE</button>`;
+      : `<button class="pk sm green" data-cmd="toTeam" data-uid="${c.uid}" ${state.team.length >= G.TEAM_MAX ? 'disabled' : ''}>→ EQUIPE</button>`);
     return `
       <div class="show">
         ${portrait(c.species, { shiny: c.shiny, foot: `<span class="ss gold" style="font-size:12px;line-height:1">NV${c.level}</span><div class="bar grow"><i style="width:${pct(r)};background:${hpColor(r)}"></i></div><span class="ss" style="font-size:10px;line-height:1">HP</span>` })}
@@ -291,7 +306,7 @@
         if (!m) return '<div class="slot empty"></div>';
         const rr = m.hp / G.maxHp(m);
         return `<button class="slot${m.uid === lead?.uid ? ' lead' : ''}${m.uid === c.uid ? ' on pulse' : ''}" data-cmd="select" data-uid="${m.uid}" title="${esc(G.SPECIES[m.species].name)} NV${m.level}">
-          ${m.uid === lead?.uid ? '<span class="crown">★</span>' : ''}${spr(m.species, { shiny: m.shiny, size: 32 })}
+          ${m.uid === lead?.uid ? '<span class="crown">★</span>' : ''}${readyEvos(m).length ? '<span class="evoup" title="Pode evoluir">▲</span>' : ''}${spr(m.species, { shiny: m.shiny, size: 32 })}
           <span class="hp"><i style="width:${pct(rr)};background:${hpColor(rr)}"></i></span></button>`;
       }).join('')}</div>
       <div style="height:32px;flex-shrink:0;display:flex;gap:6px;align-items:center">
@@ -572,6 +587,9 @@
         <div class="setrow"><span class="t"><b>Som</b><small>Grito dos bichos na Dex</small></span>${tg('mute', !store.get('taskmon-mute', false))}</div>
         <div class="setrow"><span class="t"><b>Equipe toda na faixa</b><small>Desligado: só o líder anda</small></span>${tg('showTeam', s.showTeam !== false)}</div>
         <div class="setrow"><span class="t"><b>Faixa recolhida</b><small>Só a barrinha com o líder</small></span>${tg('collapse', s.collapsed)}</div>
+        <div class="setrow"><span class="t"><b>Evoluir sozinho</b><small>Desligado: fica na forma atual com ▲ e você evolui no STATUS</small></span>${tg('autoEvolve', s.autoEvolve !== false)}</div>
+        <div class="setrow"><span class="t"><b>Modo debug</b><small>Doce Raro e Pedra Coringa infinitos na mochila${s.debug ? '' : ', multiplicador de XP'}</small></span>${tg('debug', s.debug)}</div>
+        ${s.debug ? `<div class="setrow"><span class="t"><b>XP ganho (debug)</b><small>Multiplica a experiência das batalhas</small></span><select id="xpMult">${[1, 2, 5, 10, 100].map((m) => opt(String(m), `${m}×`, String(s.xpMult))).join('')}</select></div>` : ''}
         <div class="setrow"><span class="t"><b>Sprites e tiles</b><small>${A.list().length} arquivo(s) customizado(s)</small></span><button class="pk sm" data-cmd="openSprites">PASTA</button><button class="pk sm" data-cmd="reloadSprites">RECARREGAR</button></div>
         <div class="setrow"><span class="t"><b>Estatísticas</b><small>${state.stats.wins} vitórias · ${state.stats.battles} batalhas · ${state.stats.caught} capturas${state.stats.hatched ? ` · ${state.stats.hatched} ovos` : ''}</small></span></div>
         <div class="setrow"><span class="t"><b>Recomeçar</b><small>Apaga todo o progresso</small></span><button class="pk sm red" data-cmd="reset">RECOMEÇAR</button></div>
@@ -632,6 +650,17 @@
             <span style="font-size:15px;font-weight:600">${on ? '✓ ' : ''}${esc(m.name)}</span><span style="display:flex;gap:6px;align-items:center">${typeBadge(m.type)}<span class="ss muted" style="font-size:9px">${m.cat === 'status' ? 'STATUS' : `POD ${m.power}`}</span></span></button>`;
         }).join('')}</div>
         <div style="display:flex;justify-content:flex-end;gap:6px"><button class="pk on" data-cmd="saveMoves" ${draft.length ? '' : 'disabled'}>SALVAR</button>${close}</div>`;
+    } else if (modalState.kind === 'evoPick') {
+      const c = byUid(modalState.uid);
+      if (!c) { modal.close(); return; }
+      html = `<div class="md-head"><h3>Evoluir ${esc(G.SPECIES[c.species].name)} pra…</h3></div>
+        <div class="inset scroll" style="padding:2px">${modalState.options.map((to) => {
+          const e = G.SPECIES[c.species].evolutions.find((x) => x.to === to);
+          return `<button class="lrow" data-cmd="evolve" data-uid="${c.uid}" data-to="${to}" data-force="${modalState.force ? 1 : ''}"><span class="ico" style="width:44px;height:44px">${spr(to, { size: 36, shiny: c.shiny, silhouette: !state.dex.seen[to] })}</span>
+            <span class="grow" style="display:flex;flex-direction:column;gap:3px"><span class="nm">${esc(state.dex.seen[to] ? G.SPECIES[to].name : '???')}</span><span style="display:flex;gap:4px">${state.dex.seen[to] ? typeBadges(to) : ''}</span>
+            <span class="ds">${esc(e ? G.evoText(e) : '')}</span></span></button>`;
+        }).join('')}</div>
+        <div style="display:flex;justify-content:flex-end">${close}</div>`;
     } else if (modalState.kind === 'held') {
       const c = byUid(modalState.uid);
       if (!c) { modal.close(); return; }
@@ -706,6 +735,8 @@
     body.querySelectorAll('.scroll').forEach((el, i) => { if (keep[i]) el.scrollTop = keep[i]; });
     const cm = $('catchMode');
     if (cm) cm.addEventListener('change', (e) => send({ type: 'catchMode', value: e.target.value }));
+    const xm = $('xpMult');
+    if (xm) xm.addEventListener('change', (e) => send({ type: 'evoSettings', xpMult: Number(e.target.value) }));
   }
 
   function onState(s) {
@@ -823,6 +854,26 @@
       case 'cry': cry(d.species); break;
       case 'autoBuy': send({ type: 'autoBuy', value: !state.settings.autoBuy }); break;
       case 'autoMoves': send({ type: 'autoMoves', value: state.settings.autoMoves === false }); break;
+      case 'autoEvolve': send({ type: 'evoSettings', autoEvolve: state.settings.autoEvolve === false }); break;
+      case 'debug': send({ type: 'evoSettings', debug: !state.settings.debug }); break;
+      case 'evolveStart': { // botão ▲ EVOLUIR: com mais de um caminho, escolhe
+        const c = byUid(d.uid), opts = readyEvos(c).map((e) => e.to);
+        if (opts.length === 1) send({ type: 'evolve', uid: c.uid, to: opts[0] });
+        else if (opts.length) openModal({ kind: 'evoPick', uid: c.uid, options: opts, force: false });
+        break;
+      }
+      case 'evolve':
+        send({ type: 'evolve', uid: d.uid, to: d.to, force: !!d.force });
+        if (modal.open) modal.close();
+        break;
+      case 'debugLevel': send({ type: 'debugLevel', uid: d.uid }); break;
+      case 'debugEvolve': { // Pedra Coringa: qualquer evolução da espécie, sem condição
+        const c = byUid(d.uid);
+        const opts = c ? G.SPECIES[c.species].evolutions.map((e) => e.to).filter((to) => G.SPECIES[to]) : [];
+        if (opts.length === 1) send({ type: 'evolve', uid: c.uid, to: opts[0], force: true });
+        else if (opts.length) openModal({ kind: 'evoPick', uid: c.uid, options: opts, force: true });
+        break;
+      }
       case 'collapse': send({ type: 'stripUi', collapsed: !state.settings.collapsed }); break;
       case 'showTeam': send({ type: 'stripUi', showTeam: state.settings.showTeam === false }); break;
       case 'openSprites': bridge.openSpritesFolder(); break;

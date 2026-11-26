@@ -73,6 +73,8 @@ dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-si
 .tagbox .main { min-width: 72px; display: flex; flex-direction: column; gap: 3px; }
 .tagbox .row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 8px; line-height: 1; text-shadow: 1px 1px 0 #0a0c0e; }
 .tagbox .nm { color: #ead9b0; } .tagbox .lv { color: #e0a040; margin-left: auto; }
+.tagbox .up { color: #e0a040; animation: upblink 0.7s steps(2, end) infinite; margin-left: -3px; }
+@keyframes upblink { 50% { opacity: 0; } }
 .tagbox .stc { font-size: 8px; line-height: 8px; height: 10px; box-sizing: border-box; padding: 1px 3px 0; color: #0a0c0e; text-shadow: none; box-shadow: inset 0 0 0 1px #0a0c0e; }
 .tagbox .types { display: flex; flex-direction: column; gap: 1px; }
 /* barra de pixel "redonda": moldura de 2 px, cantos cortados, faixa de cima mais clara */

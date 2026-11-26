@@ -77,6 +77,12 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Evoluções** podem ser por nível, por item (pedras na Loja, usadas na EQUIPE) e com condições (sexo,
   item segurado, zona, dia/noite); com mais de uma, o bicho ramifica. Gotinha vira Maré no NV16 ou
   Tempestade com a Pedra do Trovão; Brotinho vira Ipê de dia ou Dama-da-Noite de noite.
+- **Evolução animada** na faixa: o bicho fica branco, a forma antiga e a nova alternam cada vez mais
+  rápido, clarão, e a forma nova aparece, com bolinhas de luz girando em volta. **Evoluir sozinho**
+  (Ajustes) desligado: o bicho fica na forma atual com ▲ (na faixa e na EQUIPE) e você evolui pelo botão
+  EVOLUIR no STATUS ou na EQUIPE, escolhendo o caminho quando tem mais de um.
+- **Modo debug** (Ajustes): Doce Raro (+1 nível) e Pedra Coringa (força qualquer evolução) infinitos na
+  mochila da EQUIPE, e multiplicador do XP das batalhas (até 100×).
 - **Tipos**: os 18 do original mais "???" (ids no `species.js`: normal, fogo, agua, planta, eletrico, gelo,
   lutador, veneno, terra, voador, psiquico, inseto, pedra, fantasma, dragao, sombrio, aco, fada, misterio),
   com a tabela de fraquezas e imunidades (0×, "Não afeta") do original e dois golpes básicos de cada.

@@ -214,9 +214,9 @@
     const el = els[id];
     set(id, `${id}pos`, `${T.x},${T.y}`, () => { el.style.left = `${T.x}px`; el.style.top = `${T.y}px`; });
     set(id, `${id}side`, T.chips, (e, side) => e.classList.toggle('chips-left', side === 'left'));
-    const key = `${T.name}|${T.st ? T.st.short : ''}|${T.xp != null}|${T.types.map((t) => t.label).join('/')}`;
+    const key = `${T.name}|${T.st ? T.st.short : ''}|${T.xp != null}|${T.up ? 1 : 0}|${T.types.map((t) => t.label).join('/')}`;
     set(id, `${id}html`, key, (e) => {
-      e.innerHTML = `<div class="main"><div class="row ss"><span class="nm">${esc(T.name)}</span><span class="lv"></span>${T.st ? `<span class="stc" style="background:${T.st.color}">${esc(T.st.short)}</span>` : ''}</div>
+      e.innerHTML = `<div class="main"><div class="row ss"><span class="nm">${esc(T.name)}</span>${T.up ? '<span class="up" title="Pode evoluir">▲</span>' : ''}<span class="lv"></span>${T.st ? `<span class="stc" style="background:${T.st.color}">${esc(T.st.short)}</span>` : ''}</div>
         <div class="pbar hp"><i></i></div>${T.xp != null ? '<div class="pbar xp"><i></i></div>' : ''}</div>
         <div class="types ss">${T.types.map((t) => `<span class="tchip" style="--b:${t.base};--l:${t.light};--d:${t.dark}">${esc(t.label)}</span>`).join('')}</div>`;
       last[`${id}lv`] = last[`${id}hp`] = last[`${id}xp`] = null;

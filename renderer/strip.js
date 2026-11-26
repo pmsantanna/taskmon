@@ -117,6 +117,7 @@
     turnT: 0, queue: [], bl: null, bw: null, log: [], ppT: 0, defeated: false, catchTries: 0, prompt: null,
     walkT: 0, walkFlip: false, lastReward: null, xpGain: 0, xpGainT: 0, alertT: 0, sparkT: 0,
     lunge: null, floaters: [], bubbles: {}, statFx: {}, capsule: null, fled: false,
+    evoQueue: [], evoAnim: null, evoReady: {}, // animação de evolução e avisos de "pode evoluir"
     toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
 
@@ -432,8 +433,9 @@
       }
       if (e.type === 'learnLater') toast(`${G.SPECIES[c.species].name} pode aprender ${G.MOVES[e.move].name}! Troque no painel.`, 3.5);
       if (e.type === 'evolve') {
-        toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4, { kind: 'success' });
-        sim.flash = 1;
+        // na equipe: anima na faixa (o "evoluiu" sai no fim); no Baú: só avisa
+        if (state.team.includes(c)) sim.evoQueue.push({ uid: c.uid, from: e.from, to: e.to, shiny: c.shiny });
+        else toast(`${G.SPECIES[e.from].name} evoluiu para ${G.SPECIES[e.to].name}!`, 4, { kind: 'success' });
       }
     }
   }
@@ -541,6 +543,24 @@
       }
       save();
       sync();
+    }
+
+    // evolução: começa quando não tem luta acontecendo e segura o resto do jogo até acabar
+    if (!sim.evoAnim && sim.evoQueue.length && sim.phase === 'walk') {
+      const q = sim.evoQueue.shift();
+      if (state.team.some((x) => x.uid === q.uid)) {
+        sim.evoAnim = { ...q, t: 0 };
+        toast(`O quê? ${G.SPECIES[q.from].name} está evoluindo!`, 3);
+      }
+    }
+    if (sim.evoAnim) {
+      if ((sim.evoAnim.t += dt) >= EVO_S) {
+        const a = sim.evoAnim;
+        sim.evoAnim = null;
+        toast(`Parabéns! ${G.SPECIES[a.from].name} evoluiu para ${G.SPECIES[a.to].name}!`, 4, { kind: 'success' });
+        save(); sync();
+      }
+      return;
     }
 
     switch (sim.phase) {
@@ -878,6 +898,129 @@
   }
   const hurt = (who) => sim.hit && sim.hit.who === who && sim.hit.t < 0.25;
 
+  /** Evolução manual ligada e já dá pra evoluir esse bicho (por nível + condições)? */
+  const canEvolve = (c) => state.settings.autoEvolve === false && G.availableEvolutions(c, { zone: state.zone }).length > 0;
+  /** Avisa uma vez quando alguém da equipe pode evoluir (evolução manual). */
+  function noticeEvolutions() {
+    for (const c of state.team) {
+      if (!canEvolve(c)) continue;
+      const key = `${c.uid}:${c.species}`;
+      if (sim.evoReady[key]) continue;
+      sim.evoReady[key] = true;
+      toast(`${G.SPECIES[c.species].name} pode evoluir! Abra o STATUS pra evoluir.`, 4, { kind: 'success' });
+    }
+  }
+
+  // ---------- Animação de evolução (estilo dos portáteis antigos) ----------
+  // 0–0,9 s: o bicho vai ficando branco · 0,9–3,9 s: silhuetas da forma antiga e da nova alternando
+  // cada vez mais rápido · 3,9–4,4 s: clarão · 4,4–5,4 s: a forma nova aparece saindo do branco.
+  // Bolinhas de luz giram em volta num plano inclinado (as de trás passam atrás do bicho, as da frente
+  // na frente, maiores e mais claras: um 3D de mentira) e explodem pra fora no clarão.
+  const EVO_S = 5.4;
+  const evoCanvas = document.createElement('canvas');
+  /** Quadro 0 da folha pintado de branco (amount 0..1) numa tela de rascunho; devolve { img, w, h }. */
+  function whiteSprite(sheet, amount) {
+    const box = sheetBox(sheet), s = spriteScale(sheet);
+    const w = box.w * s, h = box.h * s;
+    const c = evoCanvas;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, w, h);
+    g.drawImage(sheet.src, box.x, box.y, box.w, box.h, 0, 0, w, h);
+    if (amount > 0) {
+      g.globalCompositeOperation = 'source-atop';
+      g.globalAlpha = Math.min(1, amount);
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, w, h);
+      g.globalAlpha = 1;
+    }
+    return { img: c, w, h, flip: !!sheet.facesLeft };
+  }
+  function drawWhite(sheet, cx, amount) {
+    const r = whiteSprite(sheet, amount);
+    const px = snap(cx - r.w / 2), py = snap(FEET - r.h);
+    ctx.save();
+    if (r.flip) { ctx.translate(px + r.w, py); ctx.scale(-1, 1); ctx.drawImage(r.img, 0, 0); } else ctx.drawImage(r.img, px, py);
+    ctx.restore();
+    return r;
+  }
+  /** Disco de pixel (linhas de 2 px), pro clarão. */
+  function pixelDisc(cx, cy, r, color, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    for (let y = -r; y <= r; y += 2) {
+      const w = snap(Math.sqrt(Math.max(0, r * r - y * y)));
+      ctx.fillRect(snap(cx - w), snap(cy + y), w * 2, 2);
+    }
+    ctx.restore();
+  }
+
+  function drawEvolution(x, anim) {
+    const t = anim.t, cx = x + BOX / 2;
+    const from = A.creature(anim.from, anim.shiny), to = A.creature(anim.to, anim.shiny);
+    const hFrom = sheetBox(from).h * spriteScale(from), hTo = sheetBox(to).h * spriteScale(to);
+    const cy = FEET - Math.max(hFrom, hTo) / 2;
+    // cena escurece em volta (entra e sai suave)
+    const env = t < 0.5 ? t / 0.5 : t > EVO_S - 0.4 ? (EVO_S - t) / 0.4 : 1;
+    ctx.fillStyle = `rgba(12,10,30,${(0.5 * env).toFixed(3)})`;
+    ctx.fillRect(0, -SCENE_DY, groundW, 200 + SCENE_DY);
+    // bolinhas: ângulo, raio, altura e profundidade
+    const N = 24, orbs = [];
+    if (t < 4.4) {
+      const u = Math.max(0, t - 0.9);
+      for (let i = 0; i < N; i++) {
+        const th = (i / N) * Math.PI * 2 + t * 2.2 + u * u * 0.5;
+        let R, yo, fade = 1;
+        if (t < 0.9) { R = 80 - 46 * (t / 0.9); yo = ((i % 4) - 1.5) * 8; fade = t / 0.9; }
+        else if (t < 3.9) { R = 34 + 4 * Math.sin(t * 6 + i); yo = ((t * 28 + i * 13) % 56) - 28; }
+        else { const k = (t - 3.9) / 0.5; R = 34 + k * 110; yo = ((i % 4) - 1.5) * 10 * (1 + k); fade = 1 - k; }
+        const z = Math.sin(th);
+        orbs.push({ x: cx + R * Math.cos(th), y: cy + yo + z * 6, z, a: (0.5 + 0.5 * (z + 1) / 2) * fade });
+      }
+    }
+    const drawOrbs = (front) => {
+      for (const o of orbs) {
+        if ((o.z >= 0) !== front) continue;
+        const sz = o.z > 0.4 ? 6 : o.z > -0.4 ? 4 : 2; // mais perto = maior
+        ctx.globalAlpha = Math.max(0, o.a);
+        ctx.fillStyle = front ? '#fff6c8' : '#c8d8ff';
+        ctx.fillRect(snap(o.x - sz / 2), snap(o.y - sz / 2), sz, sz);
+      }
+      ctx.globalAlpha = 1;
+    };
+    drawOrbs(false);
+    if (t < 0.9) drawWhite(from, cx, t / 0.9);
+    else if (t < 3.9) {
+      const u = t - 0.9, f0 = 2.2, f1 = 14;
+      const phase = f0 * u + ((f1 - f0) * u * u) / (2 * 3.0); // a troca acelera
+      drawWhite(Math.floor(phase) % 2 ? to : from, cx, 1);
+    } else if (t < 4.4) {
+      const k = (t - 3.9) / 0.5;
+      drawWhite(to, cx, 1);
+      pixelDisc(cx, cy, snap(10 + k * 70), '#ffffff', 0.85 * (1 - k * 0.6));
+    } else {
+      const k = (t - 4.4) / (EVO_S - 4.4);
+      drawWhite(to, cx, 1 - k);
+      if (Math.floor(t / 0.2) % 2 === 0) { spark(cx - 22, cy - 10); spark(cx + 18, cy - 18); }
+      else { spark(cx + 24, cy + 4); spark(cx - 14, cy - 24); }
+    }
+    drawOrbs(true);
+  }
+
+  /** Setinha ▲ piscando em cima de quem pode evoluir (evolução manual). */
+  function upArrow(cx, topY) {
+    if (Math.floor(sim.anim * 3) % 2) return;
+    const x = snap(cx - 3), y = snap(topY - 10 - (Math.floor(sim.anim * 6) % 2) * 2);
+    ctx.fillStyle = '#1c2030';
+    ctx.fillRect(x + 2, y - 2, 4, 2); ctx.fillRect(x, y, 8, 2); ctx.fillRect(x - 2, y + 2, 12, 2); ctx.fillRect(x + 2, y + 4, 4, 4);
+    ctx.fillStyle = '#e0a040';
+    ctx.fillRect(x + 2, y, 4, 2); ctx.fillRect(x, y + 2, 8, 2); ctx.fillRect(x + 2, y + 4, 4, 2);
+  }
+
   /** Posição da cápsula (px do campo) agora, ou null. */
   function capsulePos() {
     if (!sim.capsule) return null;
@@ -916,14 +1059,19 @@
     const tick = Math.floor(sim.anim * 8);
     const resting = sim.phase === 'rest';
     const team = mates(lead);
+    const anim = sim.evoAnim;
+    let animX = null;
     team.forEach(({ c, x }, i) => {
+      if (anim && anim.uid === c.uid) { animX = x; return; }
       const still = A.creature(c.species, c.shiny).frames > 1;
       const dy = still ? 0 : walking ? ((tick + i + 1) % 2 === 0 ? -2 : 0) : (((tick >> 2) + i + 1) % 2 === 0 ? -2 : 0);
-      sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
+      const sz = sprite(c.species, c.shiny, x, { dy, alpha: c.hp <= 0 ? 0.45 : 1 });
+      if (canEvolve(c)) upArrow(x + BOX / 2, FEET - sz.h);
     });
     const animated = A.creature(lead.species, lead.shiny).frames > 1;
     const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -2 : 0) : ((tick >> 2) % 2 === 0 ? -2 : 0);
-    sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
+    if (anim && anim.uid === lead.uid) animX = leadX;
+    else sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
       dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1, fx: sim.statFx.lead,
     });
     if (resting) text('Z', leadX + BOX - 4 + Math.sin(sim.t * 3) * 2, 104 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
@@ -948,6 +1096,7 @@
     }
 
     drawFrontTufts();
+    if (anim && animX != null) drawEvolution(animX, anim);
 
     // cápsula voando / balançando no chão / faíscas da captura
     const cp = capsulePos();
@@ -1070,7 +1219,8 @@
       };
     };
     // na tela o líder fica à esquerda do selvagem (andando pra direita) ou à direita (cena espelhada)
-    v.ltag = tagOf(lead, leadX + lungeOffset('lead'), sceneFlip ? 'right' : 'left', true);
+    v.ltag = sim.evoAnim && sim.evoAnim.uid === lead.uid ? null : tagOf(lead, leadX + lungeOffset('lead'), sceneFlip ? 'right' : 'left', true);
+    if (v.ltag) v.ltag.up = canEvolve(lead);
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
       v.tag = tagOf(w, sim.wildX - lungeOffset('wild'), sceneFlip ? 'left' : 'right', false);
     }
@@ -1229,7 +1379,7 @@
     bridge.stripScale(e.deltaY < 0 ? 1 : -1);
   }, { passive: false });
   // só leitura, pra diagnóstico/testes: o que está embaixo de um ponto da faixa
-  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'card à esquerda' : 'card à direita'), statFx: () => JSON.stringify(sim.statFx) };
+  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'card à esquerda' : 'card à direita'), statFx: () => JSON.stringify(sim.statFx), evo: () => (sim.evoAnim ? sim.evoAnim.t : null) };
   bridge.onPress((p) => {
     if (DRAG_HITS.has(hitTest(p.x, p.y))) startDrag(p.x, p.y);
     else act(p.x, p.y, 'windows');
@@ -1346,6 +1496,23 @@
       case 'autoMoves':
         state.settings.autoMoves = !!cmd.value;
         break;
+      case 'evolve': { // evolução manual (botão EVOLUIR no STATUS/EQUIPE)
+        const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        const evs = c && G.evolveTo(state, c, cmd.to, { force: state.settings.debug && cmd.force ? 'any' : false });
+        if (evs) handleXpEvents(evs, c);
+        else toast('Ainda não dá pra evoluir');
+        break;
+      }
+      case 'debugLevel': { // Doce Raro (modo debug)
+        const c = state.settings.debug && [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        if (c) handleXpEvents(G.rareCandy(state, c), c);
+        break;
+      }
+      case 'evoSettings':
+        if ('autoEvolve' in cmd) state.settings.autoEvolve = !!cmd.autoEvolve;
+        if ('debug' in cmd) state.settings.debug = !!cmd.debug;
+        if ([1, 2, 5, 10, 100].includes(cmd.xpMult)) state.settings.xpMult = cmd.xpMult;
+        break;
       case 'useEvoItem': { // item de evolução usado na EQUIPE
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
         const evs = c && G.evolveWithItem(state, c, cmd.item);
@@ -1383,7 +1550,7 @@
     if (!(real > 0)) return;
     const dt = real * SPEED;
     update(dt);
-    if ((syncTimer += real) > 1) { syncTimer = 0; sync(); }
+    if ((syncTimer += real) > 1) { syncTimer = 0; sync(); noticeEvolutions(); }
     if ((saveTimer += real) > 10) { saveTimer = 0; save(); }
   }
   function frame() {

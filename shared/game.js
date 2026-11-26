@@ -669,6 +669,35 @@
     return events;
   }
 
+  /** Evoluções por nível disponíveis agora (pra evolução manual: ▲ e o botão EVOLUIR). */
+  function availableEvolutions(c, ctx = {}) {
+    return SPECIES[c.species].evolutions.filter((e) => !e.item && e.level != null && c.level >= e.level && SPECIES[e.to] && evoConditions(c, e, ctx));
+  }
+
+  /**
+   * Evolui pra `to` (evolução manual, como no Legends: Arceus). Só se estiver disponível agora, a não
+   * ser com force (Pedra Coringa do modo debug). Devolve os eventos ou null.
+   */
+  function evolveTo(state, c, to, { force = false } = {}) {
+    if (!c || !SPECIES[to]) return null;
+    const ctx = { zone: state.zone };
+    let e = availableEvolutions(c, ctx).find((x) => x.to === to);
+    if (!e && force) e = SPECIES[c.species].evolutions.find((x) => x.to === to) || (force === 'any' ? { to } : null);
+    if (!e) return null;
+    const events = evolve(c, { ...e, held: force ? null : e.held }, state.settings.autoMoves !== false);
+    state.dex.seen[c.species] = true;
+    state.dex.caught[c.species] = true;
+    return events;
+  }
+
+  /** Doce Raro (modo debug): sobe exatamente um nível. */
+  function rareCandy(state, c) {
+    if (!c || c.level >= 100) return [];
+    const events = gainXp(c, xpToNext(c.level) - c.xp, state.settings.autoMoves !== false, { zone: state.zone, autoEvolve: state.settings.autoEvolve !== false });
+    events.forEach((e) => { if (e.type === 'evolve') { state.dex.seen[e.to] = true; state.dex.caught[e.to] = true; } });
+    return events;
+  }
+
   /** Usa um item de evolução da mochila. Devolve os eventos (ou null se não serve pra esse bicho). */
   function evolveWithItem(state, c, item, ctx = {}) {
     if (!c || !(state.items[item] > 0)) return null;
@@ -708,7 +737,8 @@
       c.hp += maxHp(c) - before;
       events.push({ type: 'levelup', level: c.level });
       const evo = levelEvolution(c, ctx);
-      if (evo) events.push(...evolve(c, evo, autoReplace)); // já aprende os golpes da forma nova até aqui
+      if (evo && ctx.autoEvolve !== false) events.push(...evolve(c, evo, autoReplace)); // já aprende os golpes da forma nova até aqui
+      else if (evo) events.push({ type: 'canEvolve', to: evo.to }); // evolução manual: só avisa
       // golpes novos deste nível (da forma atual, já evoluída se for o caso)
       for (const id of (LEARNSETS[c.species] || {})[c.level] || []) {
         if (c.known.includes(id)) continue;
@@ -829,12 +859,13 @@
 
   /** XP pro líder e uma parte (30%) pro resto da equipe. Devolve os eventos do líder. */
   function rewardWin(state, wild, rng = Math.random) {
-    const xp = xpReward(wild);
+    const st = ensureSettings(state);
+    const xp = xpReward(wild) * (st.debug ? st.xpMult : 1); // multiplicador do modo debug
     let coins = coinReward(wild, rng);
     const lead = getLead(state);
     const auto = state.settings.autoMoves !== false;
     const xpOf = (c) => (c.held && HELD[c.held].xpMult) || 1; // Ovo da Sorte
-    const ctx = { zone: state.zone };
+    const ctx = { zone: state.zone, autoEvolve: st.autoEvolve !== false };
     const markEvolved = (evs) => evs.forEach((e) => { if (e.type === 'evolve') { state.dex.seen[e.to] = true; state.dex.caught[e.to] = true; } });
     const events = lead ? gainXp(lead, Math.ceil(xp * xpOf(lead)), auto, ctx) : [];
     markEvolved(events);
@@ -1058,6 +1089,11 @@
     if (st.cardClosed === undefined) st.cardClosed = false;
     if (!['bichos', 'ovo', 'hoje'].includes(st.card)) st.card = 'bichos';
     if (st.showTeam === undefined) st.showTeam = true; // faixa: equipe toda andando ou só o líder
+    // evolução: sozinha ao subir de nível, ou manual (fica na forma atual com ▲ e você evolui pelo STATUS)
+    if (st.autoEvolve === undefined) st.autoEvolve = true;
+    // modo debug: Doce Raro e Pedra Coringa infinitos na mochila e multiplicador de XP
+    if (st.debug === undefined) st.debug = false;
+    if (![1, 2, 5, 10, 100].includes(st.xpMult)) st.xpMult = 1;
     return st;
   }
 
@@ -1209,7 +1245,7 @@
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
     NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
-    MOVES, LEARNSETS, prevOf, sanitizeState, evolveWithItem, itemEvolution, levelEvolution, evoItemTargets, evoText, isNight, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
+    MOVES, LEARNSETS, prevOf, sanitizeState, availableEvolutions, evolveTo, rareCandy, evolveWithItem, itemEvolution, levelEvolution, evoItemTargets, evoText, isNight, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
     stats, maxHp, xpToNext, createCreature, typeMult, typesOf, gainXp, xpReward, coinReward,
     movesUpTo, ensureMoves, learnMove, setMoves, restorePp, hasPp,
     battler, effStat, moveDamage, useMove, endOfTurn, firstToAct, chooseMove, afterBattle,
