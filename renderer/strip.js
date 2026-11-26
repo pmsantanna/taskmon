@@ -97,6 +97,7 @@
   // saves antigos não tinham golpes
   G.ensureBreeding(state);
   G.ensureSettings(state);
+  const gone = G.sanitizeState(state); // espécies apagadas/renomeadas no shared/species.js
   [...state.team, ...state.box, ...state.daycare.mons].forEach((c) => G.ensureMoves(c));
   await A.load();
   A.setPalette(state.settings.palette);
@@ -166,6 +167,7 @@
   }
 
   // progresso offline
+  if (gone) toast(`${gone} bicho(s) do save não existem mais no species.js e saíram`, 6, { kind: 'alert' });
   if (state.starterChosen) {
     const summary = G.simulateOffline(state, (Date.now() - state.lastSaved) / 1000);
     if (summary) {

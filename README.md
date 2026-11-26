@@ -70,6 +70,9 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Espécies** ficam todas em [`shared/species.js`](shared/species.js): nome, tipos, atributos, captura,
   ovos, evoluções, golpes por nível e ficha da Dex, com os campos explicados no topo do arquivo. A ordem
   do arquivo é a ordem da Dex. Espécie sem pixel art aparece como "?" até ganhar um PNG.
+  Pra dizer onde ela aparece, use `zones: { campina: 30, lago: 10 }` (peso em cada zona); zona sem
+  ninguém usa todas as formas base. Apagou espécies que estavam no save? Os bichos delas saem sozinhos.
+  Errou alguma coisa no arquivo? O erro aparece na própria faixa, com a linha.
 - **Evoluções** podem ser por nível, por item (pedras na Loja, usadas na EQUIPE) e com condições (sexo,
   item segurado, zona, dia/noite); com mais de uma, o bicho ramifica. Gotinha vira Maré no NV16 ou
   Tempestade com a Pedra do Trovão; Brotinho vira Ipê de dia ou Dama-da-Noite de noite.

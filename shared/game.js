@@ -5,7 +5,11 @@
   'use strict';
   const MV = root.Moves || require('./moves.js');
   const { MOVES, TMS, tmCompatible } = MV;
-  const SD = root.SpeciesData || require('./species.js'); // shared/species.js: todos os bichos
+  // shared/species.js: todos os bichos. Se ele tiver um erro, nada funciona: avisa com clareza.
+  const SD = root.SpeciesData || (typeof require === 'function' ? require('./species.js') : null);
+  if (!SD || !SD.SPECIES || !Object.keys(SD.SPECIES).length) {
+    throw new Error('O arquivo shared/species.js não carregou (ou está sem espécies). Veja o erro logo acima: normalmente é texto sem aspas, vírgula ou chave faltando.');
+  }
   const IT = root.Items || require('./items.js');
   const { NATURES, HELD, WILD_HELD } = IT;
   const NATURE_IDS = Object.keys(NATURES);
@@ -60,13 +64,26 @@
   SPECIES_ORDER.forEach((id) => buildLearnset(id));
 
   // ---------- Zonas ----------
-  // unlock = nível do líder necessário. pool = peso de cada espécie.
+  // unlock = nível do líder necessário. pool = peso de cada espécie (as que não existem mais são
+  // ignoradas). Uma espécie também pode dizer onde aparece no shared/species.js: zones: { campina: 30 }.
+  // Zona que ficar vazia usa todas as formas base (sem lendários), com o mesmo peso.
   const ZONES = [
     { id: 'campina', name: 'Campina', unlock: 1,  levels: [2, 5],   pool: { capi: 50, pipa: 20, vagalume: 16, brotinho: 14 }, color: '#7cc46a' },
     { id: 'lago',    name: 'Lago',    unlock: 8,  levels: [7, 14],  pool: { gotinha: 30, capi: 25, pipa: 25, vagalume: 20 }, color: '#5aa7d9' },
     { id: 'caverna', name: 'Caverna', unlock: 15, levels: [14, 24], pool: { seixo: 45, vagalume: 25, capi: 18, pedregulho: 12 }, color: '#a8a29e' },
     { id: 'vulcao',  name: 'Vulcão',  unlock: 25, levels: [24, 36], pool: { pavio: 35, seixo: 22, pedregulho: 20, capivarao: 21, boitata: 2 }, color: '#e0704a' },
   ];
+
+  for (const z of ZONES) {
+    const pool = {};
+    for (const [id, w] of Object.entries(z.pool)) if (SPECIES[id]) pool[id] = w;
+    for (const [id, d] of Object.entries(SD.SPECIES)) if (d.zones && d.zones[z.id] > 0) pool[id] = d.zones[z.id];
+    if (!Object.keys(pool).length) {
+      for (const id of SPECIES_ORDER) if (!prevOf(id) && !SPECIES[id].legendary) pool[id] = 1;
+      if (!Object.keys(pool).length) SPECIES_ORDER.forEach((id) => { pool[id] = 1; });
+    }
+    z.pool = pool;
+  }
 
   const SHOP = {
     capsula: { name: 'Cápsula', price: 20, mult: 1 },
@@ -697,6 +714,25 @@
   }
 
   // ---------- Estado do jogo ----------
+  /**
+   * Save com espécies que não existem mais (apagadas/renomeadas no species.js): tira esses bichos de
+   * equipe, caixa, creche e ovos. Sem ninguém na equipe, volta pra escolha do inicial. Devolve quantos saíram.
+   */
+  function sanitizeState(state) {
+    const ok = (c) => c && SPECIES[c.species];
+    let removed = 0;
+    const keep = (list) => (list || []).filter((c) => (ok(c) ? true : (removed++, false)));
+    state.team = keep(state.team);
+    state.box = keep(state.box);
+    if (state.daycare) { state.daycare.mons = keep(state.daycare.mons); if (state.daycare.egg && !SPECIES[state.daycare.egg.species]) state.daycare.egg = null; }
+    state.eggs = (state.eggs || []).filter((e) => SPECIES[e.species]);
+    if (!state.team.length && state.box.length) state.team.push(state.box.shift());
+    if (!state.team.length) state.starterChosen = false;
+    if (!state.team.some((c) => c.uid === state.lead)) state.lead = state.team[0] ? state.team[0].uid : null;
+    if (!ZONES.some((z) => z.id === state.zone)) state.zone = ZONES[0].id;
+    return removed;
+  }
+
   function newGame() {
     return {
       version: 1,
@@ -741,9 +777,11 @@
   }
 
   function rollWild(state, rng = Math.random) {
-    if (state.stats.battles === 0) { // primeira luta sempre tranquila
-      state.dex.seen.capi = true;
-      const first = createCreature('capi', 2, rng);
+    if (state.stats.battles === 0) { // primeira luta sempre tranquila: o bicho mais comum da 1ª zona, nível 2
+      const pool = ZONES[0].pool;
+      const sp = Object.keys(pool).sort((a, b) => pool[b] - pool[a])[0];
+      state.dex.seen[sp] = true;
+      const first = createCreature(sp, 2, rng);
       first.shiny = false;
       return first;
     }
@@ -1151,7 +1189,7 @@
     TMS, TM_DROP_CHANCE, hasTm, canLearnTm, buyTm, teachTm, rollTmDrop, describeMove: MV.describeMove,
     NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
-    MOVES, LEARNSETS, prevOf, evolveWithItem, itemEvolution, levelEvolution, evoItemTargets, evoText, isNight, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
+    MOVES, LEARNSETS, prevOf, sanitizeState, evolveWithItem, itemEvolution, levelEvolution, evoItemTargets, evoText, isNight, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
     stats, maxHp, xpToNext, createCreature, typeMult, typesOf, gainXp, xpReward, coinReward,
     movesUpTo, ensureMoves, learnMove, setMoves, restorePp, hasPp,
     battler, effStat, moveDamage, useMove, endOfTurn, firstToAct, chooseMove, afterBattle,
