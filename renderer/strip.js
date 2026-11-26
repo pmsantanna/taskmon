@@ -898,6 +898,12 @@
   }
   const hurt = (who) => sim.hit && sim.hit.who === who && sim.hit.t < 0.25;
 
+  /**
+   * Tem luta acontecendo? Do encontro até o fim da captura/fuga (enquanto há selvagem em campo).
+   * Evolução só fora dela, a não ser a que tiver inBattle: true no species.js (megas).
+   */
+  const inBattle = () => !!sim.wild;
+
   /** Evolução manual ligada e já dá pra evoluir esse bicho (por nível + condições)? */
   const canEvolve = (c) => state.settings.autoEvolve === false && G.availableEvolutions(c, { zone: state.zone }).length > 0;
   /** Avisa uma vez quando alguém da equipe pode evoluir (evolução manual). */
@@ -1498,6 +1504,8 @@
         break;
       case 'evolve': { // evolução manual (botão EVOLUIR no STATUS/EQUIPE)
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        const entry = c && G.SPECIES[c.species].evolutions.find((x) => x.to === cmd.to);
+        if (c && inBattle() && !(entry && entry.inBattle)) { toast('Não dá pra evoluir durante a luta. Termine a batalha primeiro.'); break; }
         const evs = c && G.evolveTo(state, c, cmd.to, { force: state.settings.debug && cmd.force ? 'any' : false });
         if (evs) handleXpEvents(evs, c);
         else toast('Ainda não dá pra evoluir');
@@ -1505,6 +1513,7 @@
       }
       case 'debugLevel': { // Doce Raro (modo debug)
         const c = state.settings.debug && [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        if (c && inBattle()) { toast('Doce Raro só fora da luta'); break; }
         if (c) handleXpEvents(G.rareCandy(state, c), c);
         break;
       }
@@ -1515,6 +1524,8 @@
         break;
       case 'useEvoItem': { // item de evolução usado na EQUIPE
         const c = [...state.team, ...state.box].find((x) => x.uid === cmd.uid);
+        const entry = c && G.itemEvolution(c, cmd.item, { zone: state.zone });
+        if (entry && inBattle() && !entry.inBattle) { toast('Não dá pra evoluir durante a luta. A pedra continua na mochila.'); break; }
         const evs = c && G.evolveWithItem(state, c, cmd.item);
         if (evs) handleXpEvents(evs, c);
         else toast('Esse item não serve pra esse bicho');

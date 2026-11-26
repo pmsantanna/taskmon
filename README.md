@@ -80,7 +80,9 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Evolução animada** na faixa: o bicho fica branco, a forma antiga e a nova alternam cada vez mais
   rápido, clarão, e a forma nova aparece, com bolinhas de luz girando em volta. **Evoluir sozinho**
   (Ajustes) desligado: o bicho fica na forma atual com ▲ (na faixa e na EQUIPE) e você evolui pelo botão
-  EVOLUIR no STATUS ou na EQUIPE, escolhendo o caminho quando tem mais de um.
+  EVOLUIR no STATUS ou na EQUIPE, escolhendo o caminho quando tem mais de um. Durante a luta (com
+  selvagem em campo) não dá pra evoluir nem usar pedra/Doce Raro; a evolução por XP da batalha acontece
+  no fim dela. Uma evolução com `inBattle: true` no `species.js` (pras megas) pode ser usada na luta.
 - **Modo debug** (Ajustes): Doce Raro (+1 nível) e Pedra Coringa (força qualquer evolução) infinitos na
   mochila da EQUIPE, e multiplicador do XP das batalhas (até 100×).
 - **Tipos**: os 18 do original mais "???" (ids no `species.js`: normal, fogo, agua, planta, eletrico, gelo,

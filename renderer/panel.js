@@ -47,9 +47,14 @@
 
   /** Evolução manual: evoluções por nível que já dá pra fazer agora (vazio com "evoluir sozinho" ligado). */
   const readyEvos = (c) => (c && state.settings.autoEvolve === false ? G.availableEvolutions(c, { zone: state.zone }) : []);
+  // durante a luta (selvagem em campo) só evolui o que tiver inBattle: true (megas)
+  const fighting = () => !!(state && state.battle);
+  const evoAllowed = (e) => !fighting() || !!(e && e.inBattle);
   const evoBtn = (c, label = '▲ EVOLUIR') => {
     const r = readyEvos(c);
-    return r.length ? `<button class="pk sm on pulse" data-cmd="evolveStart" data-uid="${c.uid}" title="Evoluir agora">${label}</button>` : '';
+    if (!r.length) return '';
+    const ok = r.some(evoAllowed);
+    return `<button class="pk sm on${ok ? ' pulse' : ''}" data-cmd="evolveStart" data-uid="${c.uid}" ${ok ? '' : 'disabled'} title="${ok ? 'Evoluir agora' : 'Só fora da luta'}">${label}</button>`;
   };
 
   /** O bicho escolhido (ou o líder). */
@@ -181,7 +186,7 @@
     // evoluções possíveis (por nível ainda não alcançado, ou por item/condição)
     const ready = readyEvos(c).map((e) => e.to);
     const evo = sp.evolutions.filter((e) => G.SPECIES[e.to] && (ready.includes(e.to) || e.item || e.level == null || c.level < e.level || e.gender || e.held || e.zone || e.time)).slice(0, 2)
-      .map((e) => `<div class="soon"><span class="ss gold" style="min-width:40px;font-size:11px;white-space:nowrap">${esc(e.item ? 'ITEM' : e.level != null ? `NV${e.level}` : '—')}</span><span class="grow" style="font-size:14px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(G.SPECIES[e.to].name)} <span class="muted" style="font-size:12px">${esc(G.evoText(e).replace(/^NV\d+( · )?/, ''))}</span></span>${ready.includes(e.to) ? `<button class="pk sm on pulse" data-cmd="evolve" data-uid="${c.uid}" data-to="${e.to}">EVOLUIR</button>` : `<span style="display:flex;gap:4px">${typeBadges(e.to)}</span>`}</div>`).join('');
+      .map((e) => `<div class="soon"><span class="ss gold" style="min-width:40px;font-size:11px;white-space:nowrap">${esc(e.item ? 'ITEM' : e.level != null ? `NV${e.level}` : '—')}</span><span class="grow" style="font-size:14px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(G.SPECIES[e.to].name)} <span class="muted" style="font-size:12px">${esc(G.evoText(e).replace(/^NV\d+( · )?/, ''))}</span></span>${ready.includes(e.to) ? `<button class="pk sm on${evoAllowed(e) ? ' pulse' : ''}" data-cmd="evolve" data-uid="${c.uid}" data-to="${e.to}" ${evoAllowed(e) ? '' : 'disabled'} title="${evoAllowed(e) ? 'Evoluir agora' : 'Só fora da luta'}">EVOLUIR</button>` : `<span style="display:flex;gap:4px">${typeBadges(e.to)}</span>`}</div>`).join('');
     const fresh = c.known.length - c.moves.length;
     return `
       <div class="sheet" style="flex-shrink:0;position:relative;padding:0 16px 0 48px">
@@ -235,8 +240,8 @@
 
   function bagItems(c) {
     const debug = ui.bag === 'itens' && state.settings.debug ? [
-      { id: 'debug_candy', kind: 'debug', name: 'Doce Raro (debug)', qty: '∞', desc: c ? `Sobe ${G.SPECIES[c.species].name} 1 nível` : 'Sobe 1 nível', icon: '<span class="ss" style="font-size:9px;color:#fff">+1</span>', bg: '#7a2a5a', hi: '#f0a0d0', cmd: 'debugLevel' },
-      { id: 'debug_evo', kind: 'debug', name: 'Pedra Coringa (debug)', qty: '∞', desc: c && G.SPECIES[c.species].evolutions.some((e) => G.SPECIES[e.to]) ? `Força a evolução de ${G.SPECIES[c.species].name}` : 'Força a evolução (esse bicho não evolui)', icon: '<span class="ss" style="font-size:10px;color:#fff">▲</span>', bg: '#5a4a1a', hi: '#f0d080', cmd: 'debugEvolve' },
+      { id: 'debug_candy', kind: 'debug', name: 'Doce Raro (debug)', qty: '∞', desc: fighting() ? 'Só fora da luta' : c ? `Sobe ${G.SPECIES[c.species].name} 1 nível` : 'Sobe 1 nível', icon: '<span class="ss" style="font-size:9px;color:#fff">+1</span>', bg: '#7a2a5a', hi: '#f0a0d0', cmd: 'debugLevel' },
+      { id: 'debug_evo', kind: 'debug', name: 'Pedra Coringa (debug)', qty: '∞', desc: fighting() ? 'Só fora da luta' : c && G.SPECIES[c.species].evolutions.some((e) => G.SPECIES[e.to]) ? `Força a evolução de ${G.SPECIES[c.species].name}` : 'Força a evolução (esse bicho não evolui)', icon: '<span class="ss" style="font-size:10px;color:#fff">▲</span>', bg: '#5a4a1a', hi: '#f0d080', cmd: 'debugEvolve' },
     ] : [];
     return [...debug, ...bagItemsReal(c)];
   }
@@ -258,7 +263,7 @@
         const ok = c && G.itemEvolution(c, id, { zone: state.zone });
         const who = G.evoItemTargets(id).map((t) => `${G.SPECIES[t.from].name} → ${state.dex.seen[t.to] ? G.SPECIES[t.to].name : '???'}`).join(', ');
         return { id, kind: 'evo', name: it.name, qty: state.items[id], icon: spr(id, { item: true, size: 28 }), bg: '#3a2a4a', hi: '#c0a0f0', cmd: 'evoItem',
-          desc: ok ? `Usar em ${G.SPECIES[c.species].name}: evolui pra ${G.SPECIES[ok.to].name}` : who ? `Evolui: ${who}` : 'Nenhum bicho evolui com ela (ainda)', ready: !!ok };
+          desc: ok && !evoAllowed(ok) ? 'Só dá pra usar fora da luta' : ok ? `Usar em ${G.SPECIES[c.species].name}: evolui pra ${G.SPECIES[ok.to].name}` : who ? `Evolui: ${who}` : 'Nenhum bicho evolui com ela (ainda)', ready: !!ok && evoAllowed(ok) };
       }
       return {
         id, kind: it.grit ? 'grit' : 'cap', name: it.name, qty: state.items[id],
@@ -746,7 +751,7 @@
       team: s.team.map((c) => [c.uid, c.species, c.level, c.xp, Math.round(c.hp), c.moves, c.known, c.status, c.effort, c.held, c.locked, c.pp]),
       box: s.box.map((c) => [c.uid, c.level, c.locked, c.held, c.moves]),
       eggs: KIND === 'creche' ? s.eggs : (s.eggs || []).length,
-      ui, sel, v: A.version, marked: [...marked], boxFilter, boxSort, pinned,
+      ui, sel, v: A.version, marked: [...marked], boxFilter, boxSort, pinned, fighting: !!s.battle,
     };
     const key = JSON.stringify(slim);
     if (key === lastKey) return;
@@ -784,7 +789,7 @@
       case 'evoItem': {
         const c = byUid(d.uid);
         const e = c && G.itemEvolution(c, d.id, { zone: state.zone });
-        if (!e) break; // a linha já diz quem usa
+        if (!e || !evoAllowed(e)) break; // a linha já diz quem usa (ou que é só fora da luta)
         if (confirm(`Usar ${G.SHOP[d.id].name} em ${G.SPECIES[c.species].name}? Ele vai evoluir pra ${G.SPECIES[e.to].name}.`)) send({ type: 'useEvoItem', uid: c.uid, item: d.id });
         break;
       }
@@ -866,8 +871,9 @@
         send({ type: 'evolve', uid: d.uid, to: d.to, force: !!d.force });
         if (modal.open) modal.close();
         break;
-      case 'debugLevel': send({ type: 'debugLevel', uid: d.uid }); break;
-      case 'debugEvolve': { // Pedra Coringa: qualquer evolução da espécie, sem condição
+      case 'debugLevel': if (!fighting()) send({ type: 'debugLevel', uid: d.uid }); break;
+      case 'debugEvolve': { // Pedra Coringa: qualquer evolução da espécie, sem condição (só fora da luta)
+        if (fighting()) break;
         const c = byUid(d.uid);
         const opts = c ? G.SPECIES[c.species].evolutions.map((e) => e.to).filter((to) => G.SPECIES[to]) : [];
         if (opts.length === 1) send({ type: 'evolve', uid: c.uid, to: opts[0], force: true });
