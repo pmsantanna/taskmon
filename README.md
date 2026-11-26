@@ -51,6 +51,7 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Soltar** (Baú): filtre por espécie, natureza (é / não é / neutra), faixa de IV %, brilhante e sexo;
   ligue **MARCAR** e clique nos bichos (ou "Marcar filtro") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
+- O cursor não muda em cima da faixa; só em cima do selvagem que dá pra capturar ele vira a cápsula.
 - **Arraste a faixa** pelo chão ou pela barrinha recolhida, pra qualquer lugar
   (até pra outro monitor), inclusive descendo por cima da barra de tarefas; a posição fica salva.
   Dois ímãs: encostada em cima da barra, ou com a grama alinhada na linha da barra (a terra por cima dela). **Ctrl + roda do mouse** em cima dela muda o tamanho
@@ -76,7 +77,10 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Evoluções** podem ser por nível, por item (pedras na Loja, usadas na EQUIPE) e com condições (sexo,
   item segurado, zona, dia/noite); com mais de uma, o bicho ramifica. Gotinha vira Maré no NV16 ou
   Tempestade com a Pedra do Trovão; Brotinho vira Ipê de dia ou Dama-da-Noite de noite.
-- **Tipos**: cada espécie tem um ou dois tipos, como no original (Capivarão é Normal/Água, Vagalume é
+- **Tipos**: os 18 do original mais "???" (ids no `species.js`: normal, fogo, agua, planta, eletrico, gelo,
+  lutador, veneno, terra, voador, psiquico, inseto, pedra, fantasma, dragao, sombrio, aco, fada, misterio),
+  com a tabela de fraquezas e imunidades (0×, "Não afeta") do original e dois golpes básicos de cada.
+  Cada espécie tem um ou dois tipos, como no original (Capivarão é Normal/Água, Vagalume é
   Elétrico/Voador, Pipa é Normal/Voador, Lampião é Fogo/Elétrico, Boitatá é Fogo/Planta). Contra dois
   tipos os multiplicadores se multiplicam (4× ou ¼×), golpe de qualquer um dos tipos ganha o bônus de
   mesmo tipo e a aba **TIPOS** da Dex mostra fraquezas e resistências.

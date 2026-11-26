@@ -15,23 +15,38 @@
   const NATURE_IDS = Object.keys(NATURES);
 
   // ---------- Tipos ----------
+  // Os 18 tipos do original + "???" (misterio: sem fraqueza nem resistência). Ids sem acento.
   const TYPE_LABEL = {
-    normal: 'Normal', fogo: 'Fogo', agua: 'Água', planta: 'Planta',
-    eletrico: 'Elétrico', pedra: 'Pedra', voador: 'Voador',
+    normal: 'Normal', fogo: 'Fogo', agua: 'Água', planta: 'Planta', eletrico: 'Elétrico', gelo: 'Gelo',
+    lutador: 'Lutador', veneno: 'Veneno', terra: 'Terra', voador: 'Voador', psiquico: 'Psíquico', inseto: 'Inseto',
+    pedra: 'Pedra', fantasma: 'Fantasma', dragao: 'Dragão', sombrio: 'Sombrio', aco: 'Aço', fada: 'Fada', misterio: '???',
   };
   const TYPE_COLOR = {
-    normal: '#a8a29e', fogo: '#f97316', agua: '#3b82f6', planta: '#22c55e',
-    eletrico: '#eab308', pedra: '#a16207', voador: '#8b5cf6',
+    normal: '#a8a29e', fogo: '#f97316', agua: '#3b82f6', planta: '#22c55e', eletrico: '#eab308', gelo: '#67e8f9',
+    lutador: '#b91c1c', veneno: '#a855f7', terra: '#ca8a04', voador: '#8b5cf6', psiquico: '#ec4899', inseto: '#84cc16',
+    pedra: '#a16207', fantasma: '#6d28d9', dragao: '#4f46e5', sombrio: '#57534e', aco: '#94a3b8', fada: '#f9a8d4', misterio: '#5eead4',
   };
-  // atacante -> defensor -> multiplicador (o que não estiver aqui é 1)
+  // atacante -> defensor -> multiplicador (o que não estiver aqui é 1). 0 = não afeta. Igual ao original.
   const EFFECT = {
-    normal: { pedra: 0.5 },
-    fogo: { planta: 2, agua: 0.5, pedra: 0.5, fogo: 0.5 },
-    agua: { fogo: 2, pedra: 2, planta: 0.5, agua: 0.5 },
-    planta: { agua: 2, pedra: 2, fogo: 0.5, planta: 0.5, voador: 0.5 },
-    eletrico: { agua: 2, voador: 2, planta: 0.5, eletrico: 0.5, pedra: 0.5 },
-    pedra: { fogo: 2, voador: 2 },
-    voador: { planta: 2, eletrico: 0.5, pedra: 0.5 },
+    normal: { pedra: 0.5, aco: 0.5, fantasma: 0 },
+    fogo: { planta: 2, gelo: 2, inseto: 2, aco: 2, fogo: 0.5, agua: 0.5, pedra: 0.5, dragao: 0.5 },
+    agua: { fogo: 2, terra: 2, pedra: 2, agua: 0.5, planta: 0.5, dragao: 0.5 },
+    planta: { agua: 2, terra: 2, pedra: 2, fogo: 0.5, planta: 0.5, veneno: 0.5, voador: 0.5, inseto: 0.5, dragao: 0.5, aco: 0.5 },
+    eletrico: { agua: 2, voador: 2, eletrico: 0.5, planta: 0.5, dragao: 0.5, terra: 0 },
+    gelo: { planta: 2, terra: 2, voador: 2, dragao: 2, fogo: 0.5, agua: 0.5, gelo: 0.5, aco: 0.5 },
+    lutador: { normal: 2, gelo: 2, pedra: 2, sombrio: 2, aco: 2, veneno: 0.5, voador: 0.5, psiquico: 0.5, inseto: 0.5, fada: 0.5, fantasma: 0 },
+    veneno: { planta: 2, fada: 2, veneno: 0.5, terra: 0.5, pedra: 0.5, fantasma: 0.5, aco: 0 },
+    terra: { fogo: 2, eletrico: 2, veneno: 2, pedra: 2, aco: 2, planta: 0.5, inseto: 0.5, voador: 0 },
+    voador: { planta: 2, lutador: 2, inseto: 2, eletrico: 0.5, pedra: 0.5, aco: 0.5 },
+    psiquico: { lutador: 2, veneno: 2, psiquico: 0.5, aco: 0.5, sombrio: 0 },
+    inseto: { planta: 2, psiquico: 2, sombrio: 2, fogo: 0.5, lutador: 0.5, veneno: 0.5, voador: 0.5, fantasma: 0.5, aco: 0.5, fada: 0.5 },
+    pedra: { fogo: 2, gelo: 2, voador: 2, inseto: 2, lutador: 0.5, terra: 0.5, aco: 0.5 },
+    fantasma: { psiquico: 2, fantasma: 2, sombrio: 0.5, normal: 0 },
+    dragao: { dragao: 2, aco: 0.5, fada: 0 },
+    sombrio: { psiquico: 2, fantasma: 2, lutador: 0.5, sombrio: 0.5, fada: 0.5 },
+    aco: { gelo: 2, pedra: 2, fada: 2, fogo: 0.5, agua: 0.5, eletrico: 0.5, aco: 0.5 },
+    fada: { lutador: 2, dragao: 2, sombrio: 2, fogo: 0.5, veneno: 0.5, aco: 0.5 },
+    misterio: {},
   };
 
   // ---------- Espécies (dados em shared/species.js) ----------
@@ -353,6 +368,7 @@
     const t = typesOf(target.c);
     if (status === 'queimadura' && t.includes('fogo')) return true;
     if (status === 'paralisia' && t.includes('eletrico')) return true;
+    if (status === 'veneno' && (t.includes('veneno') || t.includes('aco'))) return true;
     if (move && move.powder && t.includes('planta')) return true;
     return false;
   }
@@ -472,6 +488,10 @@
 
     if (m.cat !== 'status') {
       const r = moveDamage(att, def, id, rng);
+      if (r.mult === 0) { // tipo imune (ex.: Normal em Fantasma, Elétrico em Terra): não faz nada
+        ev.push({ kind: 'immune', who: def.side });
+        return ev;
+      }
       let dealt = Math.min(def.c.hp, r.amount);
       // Fita de Foco: com HP cheio, segura com 1
       if (dealt >= def.c.hp && def.c.hp === maxHp(def.c) && canUseOnce(def, 'sash')) {

@@ -115,6 +115,30 @@
     hidrocanhao:  { name: 'Hidrocanhão', type: 'agua', cat: 'magico', power: 110, acc: 80, pp: 5 },
     trovoada:     { name: 'Trovoada', type: 'eletrico', cat: 'magico', power: 110, acc: 70, pp: 10, effect: { status: 'paralisia', chance: 0.3 } },
 
+    // ----- Básicos dos outros tipos (pra montar os golpes das espécies novas) -----
+    po_de_gelo:    { name: 'Pó de Gelo', type: 'gelo', cat: 'magico', power: 40, acc: 100, pp: 25, effect: { stat: { spd: -1 }, target: 'foe', chance: 0.1 } },
+    rajada_gelida: { name: 'Rajada Gélida', type: 'gelo', cat: 'magico', power: 90, acc: 100, pp: 10 },
+    soco_rapido:   { name: 'Soco Rápido', type: 'lutador', cat: 'fisico', power: 40, acc: 100, pp: 30, priority: 1 },
+    golpe_marcial: { name: 'Golpe Marcial', type: 'lutador', cat: 'fisico', power: 90, acc: 100, pp: 10, crit: 1 },
+    ferrao:        { name: 'Ferrão', type: 'veneno', cat: 'fisico', power: 15, acc: 100, pp: 35, effect: { status: 'veneno', chance: 0.3 } },
+    bomba_acida:   { name: 'Bomba Ácida', type: 'veneno', cat: 'magico', power: 90, acc: 100, pp: 10, effect: { status: 'veneno', chance: 0.3 } },
+    poeirada:      { name: 'Poeirada', type: 'terra', cat: 'magico', power: 20, acc: 100, pp: 15, effect: { stat: { acc: -1 }, target: 'foe' } },
+    terremoto:     { name: 'Terremoto', type: 'terra', cat: 'fisico', power: 100, acc: 100, pp: 10 },
+    confusao:      { name: 'Confusão', type: 'psiquico', cat: 'magico', power: 50, acc: 100, pp: 25 },
+    psicoraio:     { name: 'Psicoraio', type: 'psiquico', cat: 'magico', power: 90, acc: 100, pp: 10, effect: { stat: { res: -1 }, target: 'foe', chance: 0.1 } },
+    picada:        { name: 'Picada', type: 'inseto', cat: 'fisico', power: 60, acc: 100, pp: 20 },
+    zumbido:       { name: 'Zumbido Alto', type: 'inseto', cat: 'magico', power: 90, acc: 100, pp: 10 },
+    lambida:       { name: 'Lambida', type: 'fantasma', cat: 'fisico', power: 30, acc: 100, pp: 30, effect: { status: 'paralisia', chance: 0.3 } },
+    bola_sombra:   { name: 'Bola Sombria', type: 'fantasma', cat: 'magico', power: 80, acc: 100, pp: 15 },
+    sopro_dragao:  { name: 'Sopro de Dragão', type: 'dragao', cat: 'magico', power: 60, acc: 100, pp: 20, effect: { status: 'paralisia', chance: 0.3 } },
+    garra_dragao:  { name: 'Garra de Dragão', type: 'dragao', cat: 'fisico', power: 80, acc: 100, pp: 15 },
+    mordida_sombria: { name: 'Mordida Sombria', type: 'sombrio', cat: 'fisico', power: 60, acc: 100, pp: 25 },
+    pulso_sombrio: { name: 'Pulso Sombrio', type: 'sombrio', cat: 'magico', power: 80, acc: 100, pp: 15 },
+    garra_metal:   { name: 'Garra de Metal', type: 'aco', cat: 'fisico', power: 50, acc: 95, pp: 35, effect: { stat: { atk: 1 }, target: 'self', chance: 0.1 } },
+    cauda_ferro:   { name: 'Cauda de Ferro', type: 'aco', cat: 'fisico', power: 100, acc: 75, pp: 15, effect: { stat: { def: -1 }, target: 'foe', chance: 0.3 } },
+    brilho:        { name: 'Brilho', type: 'fada', cat: 'magico', power: 40, acc: 100, pp: 25 },
+    luz_lunar:     { name: 'Luz da Lua', type: 'fada', cat: 'magico', power: 95, acc: 100, pp: 15, effect: { stat: { mag: -1 }, target: 'foe', chance: 0.3 } },
+
     // Quando todos os PP acabam (não dá pra aprender).
     debater:      { name: 'Debater-se', type: 'normal', cat: 'fisico', power: 50, acc: null, pp: 0, recoil: 1 / 4, typeless: true },
   };

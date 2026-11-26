@@ -58,7 +58,14 @@
   }
 
   // ---------- peças visuais ----------
-  const TYPE_B = { normal: '#6a6f66', fogo: '#a0482e', agua: '#3a6a9a', planta: '#4f7a3a', eletrico: '#b08a20', pedra: '#7a5230', voador: '#6a5a9a' };
+  // cor de cada tipo nos selos e cartões (as clássicas, escurecidas pro fundo escuro do painel)
+  const TYPE_BASE = {
+    normal: '#a8a878', fogo: '#f08030', agua: '#6890f0', planta: '#78c850', eletrico: '#f8d030', gelo: '#98d8d8',
+    lutador: '#c03028', veneno: '#a040a0', terra: '#e0c068', voador: '#a890f0', psiquico: '#f85888', inseto: '#a8b820',
+    pedra: '#b8a038', fantasma: '#705898', dragao: '#7038f8', sombrio: '#705848', aco: '#b8b8d0', fada: '#ee99ac', misterio: '#68a090',
+  };
+  const darken = (hex, f) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - f)).toString(16).padStart(2, '0')).join('')}`;
+  const TYPE_B = Object.fromEntries(Object.entries(TYPE_BASE).map(([t, c]) => [t, darken(c, 0.38)]));
   const typeBadge = (t) => `<span class="tb" style="background:${TYPE_B[t]}">${G.TYPE_LABEL[t].toUpperCase()}</span>`;
   /** Um ou dois selos de tipo da espécie (o segundo tipo é opcional, como no original). */
   const typeBadges = (sp) => G.typesOf(sp).map(typeBadge).join('');
@@ -512,10 +519,10 @@
         : `<p class="prose muted">Não aparece na natureza. ${G.prevOf(id) ? `Evolui de ${esc(G.SPECIES[G.prevOf(id)].name)}.` : ''}</p>${evoLines}`;
     } else if (ui.dexTab === 'types') {
       // fraquezas e resistências contra cada tipo de golpe (com dois tipos, os multiplicadores se somam)
-      const groups = [[4, '4×', '#c0402e'], [2, '2×', '#e0a040'], [0.5, '½×', '#6f9a4a'], [0.25, '¼×', '#3a6a9a']];
+      const groups = [[4, '4×', '#c0402e'], [2, '2×', '#e0a040'], [0.5, '½×', '#6f9a4a'], [0.25, '¼×', '#3a6a9a'], [0, '0×', '#8a8f86']];
       const rows = groups.map(([v, l, col]) => {
         const ts = Object.keys(G.TYPE_LABEL).filter((t) => Math.abs(G.typeMult(t, G.typesOf(id)) - v) < 1e-9);
-        return ts.length ? `<div style="display:flex;align-items:center;gap:6px;min-height:20px;flex-wrap:wrap"><span class="ss" style="width:34px;font-size:11px;color:${col}">${l}</span>${ts.map(typeBadge).join('')}</div>` : '';
+        return ts.length ? `<div style="display:flex;align-items:flex-start;gap:6px"><span class="ss" style="flex:0 0 30px;font-size:11px;line-height:17px;color:${col}">${l}</span><div style="display:flex;flex-wrap:wrap;gap:3px">${ts.map(typeBadge).join('')}</div></div>` : '';
       }).join('');
       detail = `<span class="lbl">DANO RECEBIDO POR TIPO DE GOLPE</span>${rows || '<span class="muted" style="font-size:13px">Nenhuma fraqueza nem resistência.</span>'}`;
     } else if (ui.dexTab === 'size') {
@@ -539,7 +546,7 @@
       </div>
       <div class="tabs">${[['reg', 'REGISTRO'], ['area', 'ÁREA'], ['types', 'TIPOS'], ['size', 'TAMANHO']].map(([t, l]) => `<button class="pk${ui.dexTab === t ? ' on' : ''}" data-cmd="dexTab" data-tab="${t}">${l}</button>`).join('')}
         <button class="pk" data-cmd="cry" data-species="${id}" ${seen ? '' : 'disabled'} style="margin-left:auto;display:flex;align-items:center;gap:5px">${svg('sound', 12)}OUVIR</button></div>
-      <div class="inset" style="height:112px;flex-shrink:0;padding:8px 12px;display:flex;flex-direction:column;gap:4px;overflow:hidden">${detail}</div>
+      <div class="inset${ui.dexTab === 'types' ? ' scroll' : ''}" style="height:112px;flex-shrink:0;padding:8px 12px;display:flex;flex-direction:column;gap:4px;overflow-x:hidden;overflow-y:${ui.dexTab === 'types' ? 'auto' : 'hidden'}">${detail}</div>
       <div class="inset scroll" style="flex:1;min-height:0;padding:2px"><ul style="margin:0;padding:0;list-style:none">
         ${shown.map((x) => {
           const i = ids.indexOf(x), s = state.dex.seen[x], c = state.dex.caught[x];
