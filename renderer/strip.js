@@ -116,7 +116,7 @@
     wild: null, wildX: 0, wildAlpha: 1,
     turnT: 0, queue: [], bl: null, bw: null, log: [], ppT: 0, defeated: false, catchTries: 0, prompt: null,
     walkT: 0, walkFlip: false, lastReward: null, xpGain: 0, xpGainT: 0, alertT: 0, sparkT: 0,
-    lunge: null, floaters: [], bubbles: {}, capsule: null, fled: false,
+    lunge: null, floaters: [], bubbles: {}, statFx: {}, capsule: null, fled: false,
     toasts: [], toast: null, flash: 0, scroll: 0, anim: 0,
   };
 
@@ -135,6 +135,11 @@
   function floater(text, x, y, color = '#f2ecd8', life = 0.9, size = 14) {
     sim.floaters.push({ text, x, y, t: 0, color, life, size });
   }
+
+  // Atributo subiu/caiu: o bicho fica todo vermelho (subiu) ou azul (caiu), com faixas claras
+  // correndo pra cima ou pra baixo por cima dele, como nos portáteis antigos.
+  const STAT_FX_S = 0.9;
+  function statFx(who, up) { sim.statFx[who] = { up, t: 0 }; }
 
   // Balões do design: um por dono ('lead', 'wild', 'cap'); o novo substitui o anterior.
   // y = topo do balão em px do campo.
@@ -277,7 +282,7 @@
         case 'miss': log('Mas errou!'); floater('ERROU!', posOf(e.who === 'lead' ? 'wild' : 'lead'), ty, '#a8b0a8', 1.1, 11); break;
         case 'critUp':
           if (e.failed) log(`A concentração de ${who} já está no máximo!`);
-          else { floater('FOCO↑', x, ty, '#e0a040', 1.1, 11); log(`${who} está concentrado!`); }
+          else { floater('FOCO↑', x, ty, '#e0a040', 1.1, 11); log(`${who} está concentrado!`); statFx(e.who, true); }
           break;
         case 'item': {
           const it = G.HELD[e.item];
@@ -297,6 +302,7 @@
         case 'stat': {
           const up = e.stages > 0;
           if (e.failed) { log(`${G.STAT_LABEL[e.stat]} de ${who} não vai mais ${up ? 'subir' : 'cair'}!`); break; }
+          statFx(e.who, up);
           floater(`${STAT_SHORT[e.stat].toUpperCase()}${up ? '↑' : '↓'}${Math.abs(e.stages) > 1 ? (up ? '↑' : '↓') : ''}`, x, ty, up ? '#8ac25a' : '#e06a52', 1.1, 11);
           log(`${G.STAT_LABEL[e.stat]} de ${who} ${up ? 'subiu' : 'caiu'}${Math.abs(e.stages) > 1 ? ' muito' : ''}!`);
           break;
@@ -514,6 +520,7 @@
     if (sim.lunge && (sim.lunge.t += dt) > 0.25) sim.lunge = null;
     if (sim.glow && (sim.glow.t += dt) > 0.5) sim.glow = null;
     if (sim.hit && (sim.hit.t += dt) > 0.3) sim.hit = null;
+    for (const who of Object.keys(sim.statFx)) if ((sim.statFx[who].t += dt) > STAT_FX_S) delete sim.statFx[who];
     sim.flash = Math.max(0, sim.flash - dt * 0.8);
     sim.alertT = Math.max(0, sim.alertT - dt);
     sim.xpGainT = Math.max(0, sim.xpGainT - dt);
@@ -652,7 +659,7 @@
    * caixa de 64 px que começa em x, com os pés em FEET (+dy do pulinho) e sombra no chão.
    * Devolve { w, h } em px do design.
    */
-  function sprite(id, shiny, x, { flip = false, alpha = 1, dy = 0, t = sim.anim, filter = null } = {}) {
+  function sprite(id, shiny, x, { flip = false, alpha = 1, dy = 0, t = sim.anim, filter = null, fx = null } = {}) {
     const sheet = A.creature(id, shiny);
     const box = sheetBox(sheet), s = spriteScale(sheet);
     const dw = box.w * s, dh = box.h * s, cx = x + BOX / 2;
@@ -664,10 +671,42 @@
     ctx.globalAlpha *= alpha;
     ctx.imageSmoothingEnabled = false;
     if (sheet.facesLeft) flip = !flip; // PNG desenhado olhando pra esquerda (sprites.json: "facing": "left")
-    if (flip) { ctx.translate(px + dw, py); ctx.scale(-1, 1); ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, 0, 0, dw, dh); }
+    const img = fx ? statTint(sheet.src, sx, box, dw, dh, fx) : null; // efeito de atributo (vermelho/azul)
+    if (flip) {
+      ctx.translate(px + dw, py); ctx.scale(-1, 1);
+      if (img) ctx.drawImage(img, 0, 0, dw, dh); else ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, 0, 0, dw, dh);
+    } else if (img) ctx.drawImage(img, px, py, dw, dh);
     else ctx.drawImage(sheet.src, sx, box.y, box.w, box.h, px, py, dw, dh);
     ctx.restore();
     return { w: dw, h: dh };
+  }
+
+  /**
+   * Sprite pintado de uma cor só (vermelho subindo / azul descendo) com faixas de 1 pixel de arte
+   * rolando por cima, só onde o bicho tem pixel. Feito numa tela de rascunho do tamanho do sprite.
+   */
+  const fxCanvas = document.createElement('canvas');
+  function statTint(src, sx, box, dw, dh, fx) {
+    const c = fxCanvas;
+    if (c.width !== dw || c.height !== dh) { c.width = dw; c.height = dh; }
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, dw, dh);
+    g.drawImage(src, sx, box.y, box.w, box.h, 0, 0, dw, dh);
+    g.globalCompositeOperation = 'source-atop';
+    const k = fx.t / STAT_FX_S;
+    const fade = k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1; // entra e sai suave
+    g.globalAlpha = 0.72 * fade;
+    g.fillStyle = fx.up ? '#e83a3a' : '#3a62e8';
+    g.fillRect(0, 0, dw, dh);
+    // faixas: 2 px (1 pixel de arte) a cada 8, andando 48 px/s pra cima (subiu) ou pra baixo (caiu)
+    g.globalAlpha = 0.9 * fade;
+    g.fillStyle = fx.up ? '#ffb0a0' : '#a8c4ff';
+    const off = snap((fx.t * 48) % 8) * (fx.up ? -1 : 1);
+    for (let y = -8 + (((off % 8) + 8) % 8); y < dh; y += 8) g.fillRect(0, y, dw, 2);
+    g.globalAlpha = 1;
+    return c;
   }
 
   function itemSprite(id, x, y, size, alpha = 1) {
@@ -885,7 +924,7 @@
     const animated = A.creature(lead.species, lead.shiny).frames > 1;
     const bob = animated || resting ? 0 : walking || sim.phase === 'caught' ? (tick % 2 === 0 ? -2 : 0) : ((tick >> 2) % 2 === 0 ? -2 : 0);
     sprite(lead.species, lead.shiny, leadX + lungeOffset('lead'), {
-      dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1,
+      dy: bob, alpha: resting ? 0.45 : hurt('lead') && tick % 2 === 0 ? 0.35 : 1, fx: sim.statFx.lead,
     });
     if (resting) text('Z', leadX + BOX - 4 + Math.sin(sim.t * 3) * 2, 104 - ((sim.t * 6) % 10), { size: 11, color: '#e8ecff' });
     if (sim.flash > 0) {
@@ -904,7 +943,7 @@
       sprite(w.species, w.shiny, wx, {
         flip: !sim.fled, dy: wbob, t: sim.defeated ? 0 : sim.anim,
         alpha: (sim.defeated && !sim.fled ? 0.6 : 1) * sim.wildAlpha,
-        filter: flash ? 'brightness(2.4)' : sim.phase === 'throw' && sim.t > 0.4 ? 'brightness(3)' : null,
+        filter: flash ? 'brightness(2.4)' : sim.phase === 'throw' && sim.t > 0.4 ? 'brightness(3)' : null, fx: sim.statFx.wild,
       });
     }
 
@@ -1190,7 +1229,7 @@
     bridge.stripScale(e.deltaY < 0 ? 1 : -1);
   }, { passive: false });
   // só leitura, pra diagnóstico/testes: o que está embaixo de um ponto da faixa
-  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'card à esquerda' : 'card à direita') };
+  window.__taskmon = { hit: (x, y) => hitTest(x, y), side: () => (mirror ? 'card à esquerda' : 'card à direita'), statFx: () => JSON.stringify(sim.statFx) };
   bridge.onPress((p) => {
     if (DRAG_HITS.has(hitTest(p.x, p.y))) startDrag(p.x, p.y);
     else act(p.x, p.y, 'windows');
