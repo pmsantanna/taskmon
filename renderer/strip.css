@@ -67,10 +67,17 @@ dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-si
 .tail { position: absolute; bottom: -7px; width: 8px; height: 8px; background: #12161a; border-right: 2px solid #0a0c0e; border-bottom: 2px solid #0a0c0e; transform: rotate(45deg); }
 
 /* etiqueta de HP do selvagem (só na luta) */
-#tag { position: absolute; min-width: 72px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 3px; }
+#tag { position: absolute; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; }
+#tag .main { min-width: 72px; display: flex; flex-direction: column; gap: 3px; }
 #tag .row { gap: 6px; }
-#tag .types { display: flex; gap: 2px; justify-content: center; }
-#tag .types span { font-size: 7px; line-height: 1; color: #fff; padding: 1px 3px; border: 1px solid #0a0c0e; white-space: nowrap; }
+#tag .types { display: flex; flex-direction: column; gap: 1px; }
+/* selo de tipo no estilo dos portáteis antigos: duas faixas (a de cima mais clara), contorno escuro,
+   cantos de pixel cortados e texto branco com sombra */
+.tchip {
+  width: 46px; height: 11px; box-sizing: border-box; padding-top: 2px; font-size: 8px; line-height: 8px; color: #fff; text-align: center;
+  background: linear-gradient(var(--l) 0 50%, var(--b) 50% 100%); box-shadow: inset 0 0 0 1px var(--d); text-shadow: 1px 1px 0 var(--d);
+  clip-path: polygon(1px 0, calc(100% - 1px) 0, 100% 1px, 100% calc(100% - 1px), calc(100% - 1px) 100%, 1px 100%, 0 calc(100% - 1px), 0 1px);
+}
 #tag .row { font-size: 8px; line-height: 1; text-shadow: 1px 1px 0 #0a0c0e; }
 .bar5 { height: 5px; box-sizing: border-box; border: 1px solid #0a0c0e; background: #12161a; }
 

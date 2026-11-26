@@ -33,7 +33,7 @@
     ui.innerHTML = `
       <div id="full">
         <div id="field">
-          <div id="tag" class="hide"><div class="row ss"><span id="t-name" style="color:#ead9b0"></span><span id="t-lv" style="color:#e0a040"></span></div><div class="bar5"><i id="t-hp"></i></div><div class="types ss" id="t-types"></div></div>
+          <div id="tag" class="hide"><div class="main"><div class="row ss"><span id="t-name" style="color:#ead9b0"></span><span id="t-lv" style="color:#e0a040"></span></div><div class="bar5"><i id="t-hp"></i></div></div><div class="types ss" id="t-types"></div></div>
           <div id="bubbles"></div>
           <div id="toast" class="bubble wide hide"><span id="ts-t"></span><small id="ts-s"></small></div>
           <div id="prompt" class="hide" role="group">
@@ -240,7 +240,7 @@
       text('t-lv', 'tlv', `NV${T.lv}`);
       bar('t-hp', 'thp', T.r, hpColor(T.r));
       set('t-types', 'ttypes', T.types.map((t) => t.label).join('/'), (el) => {
-        el.innerHTML = T.types.map((t) => `<span style="background:${t.color}">${esc(t.label)}</span>`).join('');
+        el.innerHTML = T.types.map((t) => `<span class="tchip" style="--b:${t.base};--l:${t.light};--d:${t.dark}">${esc(t.label)}</span>`).join('');
       });
     }
 

@@ -215,6 +215,17 @@
   const posOf = (who) => (who === 'lead' ? leadX + BOX / 2 : sim.wildX + BOX / 2);
   const nameSide = (who) => (who === 'lead' ? name(G.getLead(state)) : `${name(sim.wild)} selvagem`);
   const STAT_SHORT = { atk: 'Atq', def: 'Def', mag: 'Mag', res: 'Res', spd: 'Vel', acc: 'Prec', eva: 'Eva' };
+  // Selos de tipo da etiqueta do selvagem: nomes em inglês (abreviados como nos jogos antigos) e as
+  // cores clássicas de cada tipo; a faixa de cima é mais clara e o contorno é a cor escurecida.
+  const TYPE_EN = {
+    normal: ['NORMAL', '#a8a878'], fogo: ['FIRE', '#f08030'], agua: ['WATER', '#6890f0'], planta: ['GRASS', '#78c850'],
+    eletrico: ['ELECTR', '#f8d030'], pedra: ['ROCK', '#b8a038'], voador: ['FLYING', '#a890f0'],
+  };
+  const shade = (hex, f) => `#${[1, 3, 5].map((i) => Math.round(f < 0 ? parseInt(hex.slice(i, i + 2), 16) * (1 + f) : parseInt(hex.slice(i, i + 2), 16) + (255 - parseInt(hex.slice(i, i + 2), 16)) * f).toString(16).padStart(2, '0')).join('')}`;
+  const typeChip = (t) => {
+    const [label, base] = TYPE_EN[t] || [String(t).toUpperCase(), '#888888'];
+    return { label, base, light: shade(base, 0.35), dark: shade(base, -0.55) };
+  };
   // cores de tipo do Layout B (faixa no topo do balão) e do texto do balão
   const TYPE_B = { normal: '#6a6f66', fogo: '#a0482e', agua: '#3a6a9a', planta: '#4f7a3a', eletrico: '#b08a20', pedra: '#7a5230', voador: '#6a5a9a' };
   const TYPE_TXT = { normal: '#f2ecd8', fogo: '#e8a080', agua: '#8ab8e8', planta: '#a8d08a', eletrico: '#ead070', pedra: '#d8b088', voador: '#c0b0e8' };
@@ -1043,9 +1054,9 @@
     const w = sim.wild;
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
       v.tag = {
-        x: Math.round(fxp(snap(sim.wildX) + BOX / 2)), y: 74 + SCENE_DY, // centralizada em cima do selvagem
+        x: Math.round(fxp(snap(sim.wildX) + BOX / 2)), y: 80 + SCENE_DY, // centralizada em cima do selvagem
         name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1),
-        types: G.typesOf(w).map((t) => ({ label: G.TYPE_LABEL[t].toUpperCase(), color: TYPE_B[t] })),
+        types: G.typesOf(w).map(typeChip),
       };
     }
     const cp = capsulePos();
