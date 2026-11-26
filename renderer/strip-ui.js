@@ -34,6 +34,7 @@
       <div id="full">
         <div id="field">
           <div id="tag" class="hide"><div class="main"><div class="row ss"><span id="t-name" style="color:#ead9b0"></span><span id="t-lv" style="color:#e0a040"></span></div><div class="bar5"><i id="t-hp"></i></div></div><div class="types ss" id="t-types"></div></div>
+          <div id="ltypes" class="types ss hide"></div>
           <div id="bubbles"></div>
           <div id="toast" class="bubble wide hide"><span id="ts-t"></span><small id="ts-s"></small></div>
           <div id="prompt" class="hide" role="group">
@@ -244,6 +245,20 @@
       });
     }
 
+    show('ltypes', 'lts', v.leadTypes);
+    if (v.leadTypes) {
+      const LT = v.leadTypes;
+      // ancorada na ponta da frente das barrinhas: cresce pra trás (pra esquerda quando a frente é a direita)
+      set('ltypes', 'ltpos', `${LT.x},${LT.y},${LT.front}`, (el) => {
+        el.style.left = `${LT.x}px`; el.style.top = `${LT.y}px`;
+        el.style.transform = LT.front === 'right' ? 'translateX(-100%)' : 'none';
+      });
+      const key = `${LT.lv}|${LT.st ? LT.st.short : ''}|${LT.types.map((t) => t.label).join('/')}`;
+      set('ltypes', 'ltt', key, (el) => {
+        el.innerHTML = `<span class="lv">NV${LT.lv}</span>${LT.st ? `<span class="stc" style="background:${LT.st.color}">${esc(LT.st.short)}</span>` : ''}`
+          + LT.types.map((t) => `<span class="tchip" style="--b:${t.base};--l:${t.light};--d:${t.dark}">${esc(t.label)}</span>`).join('');
+      });
+    }
     bubbles(v.bubbles, v.fieldW);
 
     show('prompt', 'ps', v.prompt);

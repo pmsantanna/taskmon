@@ -78,7 +78,10 @@
     // abrir/fechar ele não mexe na cena.
     const CARD = 148;
     sceneFlip = !mirror;                                // mirror = card à esquerda (vem do main)
-    leadX = snap(CARD + 12 + GAP * (n - 1));
+    // a linha do líder (NV, status, tipos) cresce pra trás: sozinho, ele se afasta um pouco do card
+    const ld = G.getLead(state);
+    const rowW = ld ? 28 + G.typesOf(ld).length * 48 + (ld.status ? 22 : 0) : 0;
+    leadX = snap(Math.max(CARD + 12 + GAP * (n - 1), CARD + rowW - 46));
     wildTargetX = leadX + 110;
     fieldX0 = Math.round(DW - fieldW);                  // início (lógico) da parte visível do chão
     enterX = DW + 10;                                   // o selvagem entra pela borda aberta
@@ -134,7 +137,7 @@
 
   // Balões do design: um por dono ('lead', 'wild', 'cap'); o novo substitui o anterior.
   // y = topo do balão em px do campo.
-  const BUBBLE_Y = { lead: 46, wild: 38, cap: 92 }; // o líder tem as barrinhas de HP/EXP em cima da cabeça
+  const BUBBLE_Y = { lead: 36, wild: 38, cap: 92 }; // o líder tem as barrinhas de HP/EXP em cima da cabeça
   function bubble(who, text, { accent = '#6a6f66', color = '#f2ecd8', life = 1.2, y } = {}) {
     sim.bubbles[who] = { text, accent, color, life, t: 0, y };
   }
@@ -246,7 +249,7 @@
       switch (e.kind) {
         case 'use': {
           const m = G.MOVES[e.move];
-          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 38 : 46 });
+          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 38 : 36 });
           if (m.cat !== 'status') sim.lunge = { who: e.who, t: 0 };
           else sim.glow = { who: e.who, t: 0, color: G.TYPE_COLOR[m.type] };
           log(`${who} usou ${m.name}!`);
@@ -348,7 +351,7 @@
     sim.lastReward = res;
     sim.xpGain = res.xp;
     sim.xpGainT = 3; // "+XP" ao lado da barra de EXP
-    bubble('lead', `+${res.xp.toLocaleString('pt-BR')} EXP`, { accent: '#e0a040', color: '#e0a040', life: 2, y: 44 });
+    bubble('lead', `+${res.xp.toLocaleString('pt-BR')} EXP`, { accent: '#e0a040', color: '#e0a040', life: 2, y: 34 });
     const td = G.today(state);
     td.xp += res.xp;
     if (res.tm) td.items++;
@@ -845,17 +848,9 @@
     const r = G.clamp(c.hp / G.maxHp(c), 0, 1);
     roundBar(bx, by, UNITS, 2, r, HP_FILL(r));                  // 4 pixels de altura
     if (!isLead) return;
+    sim.leadBar = { x: bx, y: by, w: W2, h: 12 }; // a camada HTML põe os selos de tipo ao lado
     roundBar(bx, by + 3 * PX, UNITS, 1, G.clamp(c.xp / G.xpToNext(c.level), 0, 1), ['#5a8ed0', '#8ab8f0']); // EXP colada embaixo (divide a moldura)
-    const st = c.status && G.STATUS[c.status];
-    const label = `NV${c.level}`;
-    if (!st) { text(label, bx + W2 / 2, by - 12, { size: 8, color: '#e0a040' }); return; }
-    const lw = measure(label, 8), tw = 16, x0 = Math.round(bx + W2 / 2 - (lw + 3 + tw) / 2);
-    text(label, x0, by - 12, { size: 8, color: '#e0a040', align: 'left' });
-    ctx.fillStyle = '#0a0c0e'; ctx.fillRect(x0 + lw + 3, by - 12, tw, 9);
-    ctx.fillStyle = st.color; ctx.fillRect(x0 + lw + 4, by - 11, tw - 2, 7);
-    ctx.fillStyle = '#0a0c0e'; ctx.font = '6px Silkscreen, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const cx = x0 + lw + 3 + tw / 2;
-    unflip(cx, () => ctx.fillText(st.short.slice(0, 3).toUpperCase(), cx, by - 10));
+    // nível, status e tipos do líder: linha HTML em cima das barrinhas (strip-ui, #ltypes)
   }
 
   /** Faísca em "+" de 4 px (captura). */
@@ -1057,6 +1052,19 @@
         x: Math.round(fxp(snap(sim.wildX) + BOX / 2)), y: 80 + SCENE_DY, // centralizada em cima do selvagem
         name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1),
         types: G.typesOf(w).map(typeChip),
+      };
+    }
+    // linha do líder em cima das barrinhas: NV, status e selos de tipo. Começa na ponta da frente
+    // das barrinhas (lado do selvagem) e cresce pra trás, por cima da fila (que não tem rótulo).
+    if (sim.leadBar && state.starterChosen) {
+      const L = sim.leadBar;
+      const st = lead.status && G.STATUS[lead.status];
+      v.leadTypes = {
+        y: Math.round(L.y + SCENE_DY - 13),
+        front: sceneFlip ? 'left' : 'right',
+        x: Math.round(sceneFlip ? axis - (L.x + L.w) : L.x + L.w - fieldX0),
+        lv: lead.level, st: st ? { short: st.short.slice(0, 3).toUpperCase(), color: st.color } : null,
+        types: G.typesOf(lead).map(typeChip),
       };
     }
     const cp = capsulePos();

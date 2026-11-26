@@ -71,6 +71,10 @@ dl.today dt { font-size: 9px; color: #a8b0a8; } dl.today dd { margin: 0; font-si
 #tag .main { min-width: 72px; display: flex; flex-direction: column; gap: 3px; }
 #tag .row { gap: 6px; }
 #tag .types { display: flex; flex-direction: column; gap: 1px; }
+/* linha do líder em cima das barrinhas: NV, status e selos de tipo */
+#ltypes { position: absolute; display: flex; flex-direction: row; align-items: center; gap: 2px; }
+#ltypes .lv { font-size: 8px; line-height: 1; color: #e0a040; text-shadow: 1px 0 0 #0a0c0e, -1px 0 0 #0a0c0e, 0 1px 0 #0a0c0e, 0 -1px 0 #0a0c0e; margin-right: 2px; }
+#ltypes .stc { font-size: 8px; line-height: 8px; height: 11px; box-sizing: border-box; padding: 2px 3px 0; color: #0a0c0e; box-shadow: inset 0 0 0 1px #0a0c0e; }
 /* selo de tipo no estilo dos portáteis antigos: duas faixas (a de cima mais clara), contorno escuro,
    cantos de pixel cortados e texto branco com sombra */
 .tchip {
