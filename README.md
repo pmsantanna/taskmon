@@ -67,6 +67,10 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
 - **Creche e ovos**: deixe um casal na **Creche** (ovo na EQUIPE); os ovos chocam sozinhos com o tempo.
 - **Ajustes**: engrenagem no topo da EQUIPE.
 - **MTs**: aba MTs da Loja. Compre ou ache as exclusivas em batalha e ensine pra quem for compatível.
+- **Tipos**: cada espécie tem um ou dois tipos, como no original (Capivarão é Normal/Água, Vagalume é
+  Elétrico/Voador, Pipa é Normal/Voador, Lampião é Fogo/Elétrico, Boitatá é Fogo/Planta). Contra dois
+  tipos os multiplicadores se multiplicam (4× ou ¼×), golpe de qualquer um dos tipos ganha o bônus de
+  mesmo tipo e a aba **TIPOS** da Dex mostra fraquezas e resistências.
 - Brilhantes: 1 em 256. Lendário escondido no Vulcão. 👀
 
 ## Batalha

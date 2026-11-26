@@ -247,8 +247,10 @@
           if (e.crit) floater('CRÍTICO!', x, y - 16, '#e0a040', 1.1, 11);
           sim.hit = { who: e.who, t: 0, crit: e.crit };
           if (e.crit) log('Um golpe crítico!');
-          if (e.mult > 1) log('É super efetivo!');
-          if (e.mult < 1) log('Não é muito efetivo…');
+          if (e.mult >= 4) log('É extremamente efetivo!');
+          else if (e.mult > 1) log('É super efetivo!');
+          if (e.mult <= 0.25) log('Quase não fez efeito…');
+          else if (e.mult < 1) log('Não é muito efetivo…');
           break;
         }
         case 'miss': log('Mas errou!'); floater('ERROU!', posOf(e.who === 'lead' ? 'wild' : 'lead'), ty, '#a8b0a8', 1.1, 11); break;

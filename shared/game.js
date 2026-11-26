@@ -32,21 +32,26 @@
   // ---------- Espécies (todas originais) ----------
   // atk/def = físico, mag/res = mágico (ataque e defesa especiais), spd = velocidade.
   // female = chance de nascer fêmea (null = sem sexo). egg = grupos de ovo ('indefinido' = não põe ovo).
+  // types = um ou dois tipos, como no original (o segundo é opcional).
   const SPECIES = {
-    capi:       { name: 'Capi',       type: 'normal',   base: { hp: 60, atk: 45, def: 45, mag: 35, res: 45, spd: 40 },  xp: 40,  catch: 0.55, evolvesTo: 'capivarao', evolveLevel: 18, female: 0.5, egg: ['campo', 'agua'] },
-    capivarao:  { name: 'Capivarão',  type: 'normal',   base: { hp: 95, atk: 70, def: 72, mag: 50, res: 70, spd: 48 },  xp: 110, catch: 0.2, female: 0.5, egg: ['campo', 'agua'] },
-    pavio:      { name: 'Pavio',      type: 'fogo',     base: { hp: 48, atk: 60, def: 46, mag: 65, res: 50, spd: 60 },  xp: 62,  catch: 0.3,  evolvesTo: 'lampiao', evolveLevel: 16, female: 0.125, egg: ['campo'] },
-    lampiao:    { name: 'Lampião',    type: 'fogo',     base: { hp: 76, atk: 90, def: 70, mag: 95, res: 75, spd: 80 },  xp: 150, catch: 0.1, female: 0.125, egg: ['campo'] },
-    gotinha:    { name: 'Gotinha',    type: 'agua',     base: { hp: 50, atk: 48, def: 55, mag: 55, res: 60, spd: 50 },  xp: 62,  catch: 0.3,  evolvesTo: 'mare', evolveLevel: 16, female: 0.125, egg: ['agua'] },
-    mare:       { name: 'Maré',       type: 'agua',     base: { hp: 85, atk: 78, def: 82, mag: 85, res: 85, spd: 65 },  xp: 150, catch: 0.1, female: 0.125, egg: ['agua'] },
-    brotinho:   { name: 'Brotinho',   type: 'planta',   base: { hp: 52, atk: 50, def: 52, mag: 55, res: 55, spd: 45 },  xp: 62,  catch: 0.3,  evolvesTo: 'ipe', evolveLevel: 16, female: 0.125, egg: ['planta'] },
-    ipe:        { name: 'Ipê',        type: 'planta',   base: { hp: 88, atk: 80, def: 80, mag: 85, res: 85, spd: 60 },  xp: 150, catch: 0.1, female: 0.125, egg: ['planta'] },
-    vagalume:   { name: 'Vagalume',   type: 'eletrico', base: { hp: 40, atk: 55, def: 35, mag: 70, res: 40, spd: 85 },  xp: 55,  catch: 0.45, female: 0.5, egg: ['inseto'] },
-    seixo:      { name: 'Seixo',      type: 'pedra',    base: { hp: 45, atk: 55, def: 80, mag: 25, res: 40, spd: 20 },  xp: 58,  catch: 0.45, evolvesTo: 'pedregulho', evolveLevel: 24, female: 0.5, egg: ['mineral'] },
-    pedregulho: { name: 'Pedregulho', type: 'pedra',    base: { hp: 75, atk: 85, def: 115, mag: 40, res: 60, spd: 25 }, xp: 160, catch: 0.12, female: 0.5, egg: ['mineral'] },
-    pipa:       { name: 'Pipa',       type: 'voador',   base: { hp: 42, atk: 50, def: 38, mag: 45, res: 40, spd: 80 },  xp: 50,  catch: 0.5, female: 0.5, egg: ['voador'] },
-    boitata:    { name: 'Boitatá',    type: 'fogo',     base: { hp: 90, atk: 110, def: 85, mag: 115, res: 90, spd: 95 }, xp: 280, catch: 0.04, legendary: true, female: null, egg: ['indefinido'] },
+    capi:       { name: 'Capi',       types: ['normal'],   base: { hp: 60, atk: 45, def: 45, mag: 35, res: 45, spd: 40 },  xp: 40,  catch: 0.55, evolvesTo: 'capivarao', evolveLevel: 18, female: 0.5, egg: ['campo', 'agua'] },
+    capivarao:  { name: 'Capivarão',  types: ['normal', 'agua'],   base: { hp: 95, atk: 70, def: 72, mag: 50, res: 70, spd: 48 },  xp: 110, catch: 0.2, female: 0.5, egg: ['campo', 'agua'] },
+    pavio:      { name: 'Pavio',      types: ['fogo'],     base: { hp: 48, atk: 60, def: 46, mag: 65, res: 50, spd: 60 },  xp: 62,  catch: 0.3,  evolvesTo: 'lampiao', evolveLevel: 16, female: 0.125, egg: ['campo'] },
+    lampiao:    { name: 'Lampião',    types: ['fogo', 'eletrico'],     base: { hp: 76, atk: 90, def: 70, mag: 95, res: 75, spd: 80 },  xp: 150, catch: 0.1, female: 0.125, egg: ['campo'] },
+    gotinha:    { name: 'Gotinha',    types: ['agua'],     base: { hp: 50, atk: 48, def: 55, mag: 55, res: 60, spd: 50 },  xp: 62,  catch: 0.3,  evolvesTo: 'mare', evolveLevel: 16, female: 0.125, egg: ['agua'] },
+    mare:       { name: 'Maré',       types: ['agua'],     base: { hp: 85, atk: 78, def: 82, mag: 85, res: 85, spd: 65 },  xp: 150, catch: 0.1, female: 0.125, egg: ['agua'] },
+    brotinho:   { name: 'Brotinho',   types: ['planta'],   base: { hp: 52, atk: 50, def: 52, mag: 55, res: 55, spd: 45 },  xp: 62,  catch: 0.3,  evolvesTo: 'ipe', evolveLevel: 16, female: 0.125, egg: ['planta'] },
+    ipe:        { name: 'Ipê',        types: ['planta'],   base: { hp: 88, atk: 80, def: 80, mag: 85, res: 85, spd: 60 },  xp: 150, catch: 0.1, female: 0.125, egg: ['planta'] },
+    vagalume:   { name: 'Vagalume',   types: ['eletrico', 'voador'], base: { hp: 40, atk: 55, def: 35, mag: 70, res: 40, spd: 85 },  xp: 55,  catch: 0.45, female: 0.5, egg: ['inseto'] },
+    seixo:      { name: 'Seixo',      types: ['pedra'],    base: { hp: 45, atk: 55, def: 80, mag: 25, res: 40, spd: 20 },  xp: 58,  catch: 0.45, evolvesTo: 'pedregulho', evolveLevel: 24, female: 0.5, egg: ['mineral'] },
+    pedregulho: { name: 'Pedregulho', types: ['pedra'],    base: { hp: 75, atk: 85, def: 115, mag: 40, res: 60, spd: 25 }, xp: 160, catch: 0.12, female: 0.5, egg: ['mineral'] },
+    pipa:       { name: 'Pipa',       types: ['normal', 'voador'],   base: { hp: 42, atk: 50, def: 38, mag: 45, res: 40, spd: 80 },  xp: 50,  catch: 0.5, female: 0.5, egg: ['voador'] },
+    boitata:    { name: 'Boitatá',    types: ['fogo', 'planta'],     base: { hp: 90, atk: 110, def: 85, mag: 115, res: 90, spd: 95 }, xp: 280, catch: 0.04, legendary: true, female: null, egg: ['indefinido'] },
   };
+  for (const sp of Object.values(SPECIES)) sp.type = sp.types[0]; // tipo principal (atalho)
+  /** Tipos de uma espécie ou criatura (1 ou 2). */
+  const typesOf = (x) => SPECIES[typeof x === 'string' ? x : x.species].types;
+
   const SPECIES_ORDER = ['pavio', 'lampiao', 'gotinha', 'mare', 'brotinho', 'ipe', 'capi', 'capivarao',
     'vagalume', 'seixo', 'pedregulho', 'pipa', 'boitata'];
   const STARTERS = ['pavio', 'gotinha', 'brotinho'];
@@ -218,7 +223,7 @@
   function moveValue(c, id) {
     const m = MOVES[id];
     if (m.cat === 'status') return 30;
-    const stab = m.type === SPECIES[c.species].type ? 1.5 : 1;
+    const stab = typesOf(c).includes(m.type) ? 1.5 : 1;
     return m.power * stab * ((m.acc ?? 100) / 100);
   }
 
@@ -262,9 +267,11 @@
     for (const id of c.moves) c.pp[id] = Math.min(MOVES[id].pp, (c.pp[id] ?? 0) + amount);
   }
 
-  // Igual ao original: 2× super efetivo, 0.5× pouco efetivo.
-  function typeMult(attType, defType) {
-    return (EFFECT[attType] && EFFECT[attType][defType]) ?? 1;
+  // Igual ao original: 2× super efetivo, 0.5× pouco efetivo. Contra dois tipos os multiplicadores se
+  // multiplicam (4× quando os dois são fracos, 0.25× quando os dois resistem, 1× quando se anulam).
+  function typeMult(attType, defTypes) {
+    const list = Array.isArray(defTypes) ? defTypes : [defTypes];
+    return list.reduce((m, d) => m * ((EFFECT[attType] && EFFECT[attType][d]) ?? 1), 1);
   }
 
   // ---------- Batalha (estilo original: categoria, estágios, status, prioridade, crítico, itens) ----------
@@ -316,13 +323,12 @@
   }
 
   const hasPp = (c) => c.moves.some((id) => (c.pp[id] ?? 0) > 0);
-  const typeOf = (c) => SPECIES[c.species].type;
 
   function statusImmune(target, status, move) {
-    const t = typeOf(target.c);
-    if (status === 'queimadura' && t === 'fogo') return true;
-    if (status === 'paralisia' && t === 'eletrico') return true;
-    if (move && move.powder && t === 'planta') return true;
+    const t = typesOf(target.c);
+    if (status === 'queimadura' && t.includes('fogo')) return true;
+    if (status === 'paralisia' && t.includes('eletrico')) return true;
+    if (move && move.powder && t.includes('planta')) return true;
     return false;
   }
 
@@ -333,8 +339,8 @@
     const crit = rng() < CRIT_RATE[critStage(att, m)];
     const A = effStat(att, physical ? 'atk' : 'mag', { ignoreDrops: crit });
     const D = effStat(def, physical ? 'def' : 'res', { ignoreBoosts: crit });
-    const mult = m.typeless ? 1 : typeMult(m.type, typeOf(def.c));
-    const stab = !m.typeless && m.type === typeOf(att.c) ? 1.5 : 1;
+    const mult = m.typeless ? 1 : typeMult(m.type, typesOf(def.c));
+    const stab = !m.typeless && typesOf(att.c).includes(m.type) ? 1.5 : 1;
     const burn = physical && att.c.status === 'queimadura' ? 0.5 : 1;
     // itens de quem ataca
     const h = heldOf(att);
@@ -541,8 +547,8 @@
       if (m.cat !== 'status') {
         const physical = m.cat === 'fisico';
         const ratio = effStat(self, physical ? 'atk' : 'mag') / effStat(foe, physical ? 'def' : 'res');
-        const stab = m.type === typeOf(c) ? 1.5 : 1;
-        score = m.power * stab * typeMult(m.type, typeOf(foe.c)) * ratio * ((m.acc ?? 100) / 100);
+        const stab = typesOf(c).includes(m.type) ? 1.5 : 1;
+        score = m.power * stab * typeMult(m.type, typesOf(foe.c)) * ratio * ((m.acc ?? 100) / 100);
         if (physical && c.status === 'queimadura') score *= 0.5;
         if (m.drain && hpR < 0.6) score *= 1.25;
         if (m.recoil && hpR < 0.35) score *= 0.6;
@@ -735,7 +741,7 @@
   const hasTm = (state, tmId) => !!(state.tms && state.tms[tmId]);
 
   function canLearnTm(c, tmId) {
-    return tmCompatible(tmId, c.species, SPECIES[c.species].type);
+    return typesOf(c).some((t) => tmCompatible(tmId, c.species, t));
   }
 
   function buyTm(state, tmId) {
@@ -1074,7 +1080,7 @@
     NATURES, HELD, natureMult, hold, critStage, hitChance, CRIT_RATE,
     STAT_KEYS, EFFORT_MULT, EFFORT_MAX, GRIT_ITEMS, ivRating, effortBonus, effortFromIv, ensureGenes, gritFor, useGrit,
     MOVES, LEARNSETS, CATEGORY: MV.CATEGORY, STATUS: MV.STATUS, STAT_LABEL: MV.STAT_LABEL,
-    stats, maxHp, xpToNext, createCreature, typeMult, gainXp, xpReward, coinReward,
+    stats, maxHp, xpToNext, createCreature, typeMult, typesOf, gainXp, xpReward, coinReward,
     movesUpTo, ensureMoves, learnMove, setMoves, restorePp, hasPp,
     battler, effStat, moveDamage, useMove, endOfTurn, firstToAct, chooseMove, afterBattle,
     catchChance, newGame, getLead, chooseStarter, unlockedZones, rollWild, addCaught, rewardWin,

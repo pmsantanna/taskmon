@@ -60,6 +60,8 @@
   // ---------- peças visuais ----------
   const TYPE_B = { normal: '#6a6f66', fogo: '#a0482e', agua: '#3a6a9a', planta: '#4f7a3a', eletrico: '#b08a20', pedra: '#7a5230', voador: '#6a5a9a' };
   const typeBadge = (t) => `<span class="tb" style="background:${TYPE_B[t]}">${G.TYPE_LABEL[t].toUpperCase()}</span>`;
+  /** Um ou dois selos de tipo da espécie (o segundo tipo é opcional, como no original). */
+  const typeBadges = (sp) => G.typesOf(sp).map(typeBadge).join('');
   const gender = (c, size = 15) => (c && c.gender ? `<span class="g-${c.gender === 'F' ? 'f' : 'm'}" style="font-size:${size}px;line-height:1">${c.gender === 'F' ? '♀' : '♂'}</span>` : '');
   const statusTag = (st) => (st ? `<span class="st" style="background:${G.STATUS[st].color}">${G.STATUS[st].short}</span>` : '');
 
@@ -162,7 +164,7 @@
     const soon = [];
     Object.keys(ls).map(Number).filter((l) => l > c.level).sort((a, b) => a - b)
       .forEach((l) => ls[l].forEach((id) => { if (!c.known.includes(id)) soon.push({ l, id }); }));
-    const evo = sp.evolvesTo && c.level < sp.evolveLevel ? `<div class="soon"><span class="ss gold" style="width:40px;font-size:11px">NV${sp.evolveLevel}</span><span class="grow" style="font-size:15px;font-weight:600">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)}</span>${typeBadge(G.SPECIES[sp.evolvesTo].type)}</div>` : '';
+    const evo = sp.evolvesTo && c.level < sp.evolveLevel ? `<div class="soon"><span class="ss gold" style="width:40px;font-size:11px">NV${sp.evolveLevel}</span><span class="grow" style="font-size:15px;font-weight:600">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)}</span><span style="display:flex;gap:4px">${typeBadges(sp.evolvesTo)}</span></div>` : '';
     const fresh = c.known.length - c.moves.length;
     return `
       <div class="sheet" style="flex-shrink:0;position:relative;padding:0 16px 0 48px">
@@ -209,7 +211,7 @@
         const sp = G.SPECIES[id];
         return `<div class="rowp starter"><div style="height:120px">${portrait(id, { width: 140 })}</div>
           <div class="grow" style="display:flex;flex-direction:column;gap:8px"><span class="sh" style="font-size:20px;font-weight:600;color:#f2ecd8">${esc(sp.name)}</span>
-          <div>${typeBadge(sp.type)}</div><span class="muted" style="font-size:13px">${esc(DX.INFO[id]?.cat || '')}</span>
+          <div style="display:flex;gap:6px">${typeBadges(id)}</div><span class="muted" style="font-size:13px">${esc(DX.INFO[id]?.cat || '')}</span>
           <button class="tab tab-on" style="height:34px;align-self:flex-start" data-cmd="starter" data-species="${id}">ESCOLHER</button></div></div>`;
       }).join('')}</div>`;
   }
@@ -253,7 +255,7 @@
         ${portrait(c.species, { shiny: c.shiny, foot: `<span class="ss gold" style="font-size:12px;line-height:1">NV${c.level}</span><div class="bar grow"><i style="width:${pct(r)};background:${hpColor(r)}"></i></div><span class="ss" style="font-size:10px;line-height:1">HP</span>` })}
         <div class="grow" style="display:flex;flex-direction:column;justify-content:space-between">
           <div style="display:flex;align-items:baseline;gap:6px"><span class="sh" style="font-size:20px;font-weight:600;color:#f2ecd8;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(sp.name)}${c.shiny ? ' ✦' : ''}</span>${gender(c)}</div>
-          <div style="display:flex;gap:6px;align-items:center">${typeBadge(sp.type)}${statusTag(c.status)}<span class="grow"></span>${actions}</div>
+          <div style="display:flex;gap:6px;align-items:center">${typeBadges(c.species)}${statusTag(c.status)}<span class="grow"></span>${actions}</div>
           <div style="display:grid;grid-template-columns:82px minmax(0,1fr);row-gap:4px;align-items:baseline">
             <span class="ss" style="font-size:10px;color:#8a8f86">NATUREZA</span><span style="font-size:15px;font-weight:600">${esc(nat.name || '—')}${nat.up ? ` <span class="muted" style="font-size:12px">+${esc(G.STAT_LABEL[nat.up].slice(0, 3))} −${esc(G.STAT_LABEL[nat.down].slice(0, 3))}</span>` : ''}</span>
             <span class="ss" style="font-size:10px;color:#8a8f86">GENES</span><span style="font-size:15px;font-weight:600">IV ${G.ivPercent(c)}%${c.locked ? ' · 🔒' : ''}</span>
@@ -492,6 +494,14 @@
         return `<div style="display:flex;align-items:center;gap:8px;height:22px"><b style="font-size:15px;color:#f2ecd8">${esc(z.name)}</b><span class="muted" style="font-size:13px">nível ${z.levels[0]}–${z.levels[1]}</span><span class="ss gold" style="margin-left:auto;font-size:11px">${Math.round((z.pool[id] / total) * 100)}%</span></div>`;
       }).join('') + (sp.evolvesTo ? `<span class="muted" style="font-size:13px">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)} no nível ${sp.evolveLevel}.</span>` : '')
         : `<p class="prose muted">Não aparece na natureza. Evolui de outra espécie.</p>${sp.evolvesTo ? `<span class="muted" style="font-size:13px">Evolui pra ${esc(G.SPECIES[sp.evolvesTo].name)} no nível ${sp.evolveLevel}.</span>` : ''}`;
+    } else if (ui.dexTab === 'types') {
+      // fraquezas e resistências contra cada tipo de golpe (com dois tipos, os multiplicadores se somam)
+      const groups = [[4, '4×', '#c0402e'], [2, '2×', '#e0a040'], [0.5, '½×', '#6f9a4a'], [0.25, '¼×', '#3a6a9a']];
+      const rows = groups.map(([v, l, col]) => {
+        const ts = Object.keys(G.TYPE_LABEL).filter((t) => Math.abs(G.typeMult(t, G.typesOf(id)) - v) < 1e-9);
+        return ts.length ? `<div style="display:flex;align-items:center;gap:6px;min-height:20px;flex-wrap:wrap"><span class="ss" style="width:34px;font-size:11px;color:${col}">${l}</span>${ts.map(typeBadge).join('')}</div>` : '';
+      }).join('');
+      detail = `<span class="lbl">DANO RECEBIDO POR TIPO DE GOLPE</span>${rows || '<span class="muted" style="font-size:13px">Nenhuma fraqueza nem resistência.</span>'}`;
     } else if (ui.dexTab === 'size') {
       const ref = 1.6, hMax = Math.max(ref, info.height || 1), H = 76;
       detail = `<div style="display:flex;align-items:flex-end;gap:36px;justify-content:center;height:${H + 18}px;border-bottom:2px solid #3a4048">
@@ -506,12 +516,12 @@
         ${portrait(id, { dark: !seen, foot: `<span class="ss gold" style="font-size:11px;line-height:1">${dexNo(id)}</span><span class="grow"></span><span class="ss" style="font-size:9px;line-height:1">${caught ? 'CAPTURADO' : seen ? 'VISTO' : '???'}</span>` })}
         <div class="grow" style="display:flex;flex-direction:column;gap:7px">
           <span class="sh" style="font-size:22px;font-weight:600;color:#f2ecd8;line-height:1">${seen ? esc(sp.name) : '???'}</span>
-          <div style="display:flex;gap:6px">${seen ? typeBadge(sp.type) : ''}</div>
+          <div style="display:flex;gap:6px">${seen ? typeBadges(id) : ''}</div>
           <span class="muted" style="font-size:13px">${seen ? esc(info.cat || '') : 'Espécie desconhecida'}</span>
           ${seen ? `<div style="display:grid;grid-template-columns:62px 1fr;row-gap:4px;align-items:baseline"><span class="lbl">ALTURA</span><b style="font-size:15px">${DX.height(id)}</b><span class="lbl">PESO</span><b style="font-size:15px">${DX.weight(id)}</b><span class="lbl">HABITAT</span><b style="font-size:14px">${esc(info.habitat || '—')}</b></div>` : ''}
         </div>
       </div>
-      <div class="tabs">${[['reg', 'REGISTRO'], ['area', 'ÁREA'], ['size', 'TAMANHO']].map(([t, l]) => `<button class="pk${ui.dexTab === t ? ' on' : ''}" data-cmd="dexTab" data-tab="${t}">${l}</button>`).join('')}
+      <div class="tabs">${[['reg', 'REGISTRO'], ['area', 'ÁREA'], ['types', 'TIPOS'], ['size', 'TAMANHO']].map(([t, l]) => `<button class="pk${ui.dexTab === t ? ' on' : ''}" data-cmd="dexTab" data-tab="${t}">${l}</button>`).join('')}
         <button class="pk" data-cmd="cry" data-species="${id}" ${seen ? '' : 'disabled'} style="margin-left:auto;display:flex;align-items:center;gap:5px">${svg('sound', 12)}OUVIR</button></div>
       <div class="inset" style="height:112px;flex-shrink:0;padding:8px 12px;display:flex;flex-direction:column;gap:4px;overflow:hidden">${detail}</div>
       <div class="inset scroll" style="flex:1;min-height:0;padding:2px"><ul style="margin:0;padding:0;list-style:none">
