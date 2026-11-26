@@ -134,7 +134,7 @@
 
   // Balões do design: um por dono ('lead', 'wild', 'cap'); o novo substitui o anterior.
   // y = topo do balão em px do campo.
-  const BUBBLE_Y = { lead: 46, wild: 58, cap: 92 }; // o líder tem as barrinhas de HP/EXP em cima da cabeça
+  const BUBBLE_Y = { lead: 46, wild: 38, cap: 92 }; // o líder tem as barrinhas de HP/EXP em cima da cabeça
   function bubble(who, text, { accent = '#6a6f66', color = '#f2ecd8', life = 1.2, y } = {}) {
     sim.bubbles[who] = { text, accent, color, life, t: 0, y };
   }
@@ -235,7 +235,7 @@
       switch (e.kind) {
         case 'use': {
           const m = G.MOVES[e.move];
-          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 50 : 46 });
+          bubble(e.who, `${m.name.toUpperCase()}!`, { accent: TYPE_B[m.type] || '#6a6f66', color: TYPE_TXT[m.type] || '#f2ecd8', life: 1.2, y: e.who === 'wild' ? 38 : 46 });
           if (m.cat !== 'status') sim.lunge = { who: e.who, t: 0 };
           else sim.glow = { who: e.who, t: 0, color: G.TYPE_COLOR[m.type] };
           log(`${who} usou ${m.name}!`);
@@ -1042,7 +1042,11 @@
 
     const w = sim.wild;
     if (w && !sim.defeated && ['fight', 'throw'].includes(sim.phase)) {
-      v.tag = { x: Math.round(sceneFlip ? axis - (sim.wildX - 4) - 72 : sim.wildX - 4 - fieldX0), y: 88 + SCENE_DY, name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1) };
+      v.tag = {
+        x: Math.round(fxp(snap(sim.wildX) + BOX / 2)), y: 74 + SCENE_DY, // centralizada em cima do selvagem
+        name: G.SPECIES[w.species].name.toUpperCase(), lv: w.level, r: G.clamp(w.hp / G.maxHp(w), 0, 1),
+        types: G.typesOf(w).map((t) => ({ label: G.TYPE_LABEL[t].toUpperCase(), color: TYPE_B[t] })),
+      };
     }
     const cp = capsulePos();
     for (const [who, b] of Object.entries(sim.bubbles)) {
