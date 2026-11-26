@@ -58,6 +58,11 @@ function targetDisplay() {
   return all.find((d) => d.id === config.displayId) || screen.getPrimaryDisplay();
 }
 
+/** Quanto dá pra descer abaixo da área útil (a barra de tarefas, quando ela fica embaixo). */
+function belowWorkArea(d = targetDisplay()) {
+  return Math.max(0, d.bounds.y + d.bounds.height - (d.workArea.y + d.workArea.height));
+}
+
 function stripBounds() {
   const wa = targetDisplay().workArea;
   // fica em cima da área útil, encostada na barra de tarefas (sem brigar com ela pelo topo)
@@ -74,7 +79,8 @@ function stripBounds() {
   const x = config.anchor === 'right'
     ? wa.x + Math.max(0, wa.width - width - Math.max(0, config.offsetR || 0))
     : wa.x + Math.max(0, Math.min(config.offsetX, wa.width - width));
-  const up = Math.max(0, Math.min(config.offsetY || 0, wa.height - height));
+  // offsetY negativo = desce por cima da barra de tarefas (até a base da tela)
+  const up = Math.max(-belowWorkArea(), Math.min(config.offsetY || 0, wa.height - height));
   return { x: Math.round(x), y: Math.round(wa.y + wa.height - height - up), width, height };
 }
 
@@ -144,7 +150,12 @@ function dragEnd() {
     config.offsetX = Math.max(0, Math.round(b.x - wa.x));
     config.offsetR = Math.max(0, Math.round(wa.x + wa.width - (b.x + b.width)));
     config.anchor = b.x + b.width / 2 > wa.x + wa.width / 2 ? 'right' : 'left';
-    config.offsetY = Math.max(0, Math.round(wa.y + wa.height - (b.y + b.height)));
+    // pode ficar por cima da barra de tarefas; dois ímãs (8 px): encostada em cima da barra, ou com a
+    // grama alinhada na linha da barra e a faixa de terra por cima dela (terra = 10% da altura)
+    let off = Math.round(wa.y + wa.height - (b.y + b.height));
+    off = Math.max(-belowWorkArea(d), off);
+    for (const mag of [0, -Math.round(b.height * 0.1)]) if (Math.abs(off - mag) <= 8 && mag >= -belowWorkArea(d)) off = mag;
+    config.offsetY = off;
     saveConfig();
     placeStrip({ force: true }); // encaixa dentro da área útil (e acerta o tamanho no monitor novo)
   }

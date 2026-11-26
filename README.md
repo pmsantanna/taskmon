@@ -52,7 +52,8 @@ npm run dist   # sai em dist/Taskmon x.y.z.exe, não precisa instalar
   ligue **MARCAR** e clique nos bichos (ou "Marcar filtro") e solte. Trancados 🔒 nunca saem. Como no
   Legends: Arceus, soltar dá itens de esforço (30% por bicho) e algumas moedas.
 - **Arraste a faixa** pelo chão ou pela barrinha recolhida, pra qualquer lugar
-  (até pra outro monitor); a posição fica salva. **Ctrl + roda do mouse** em cima dela muda o tamanho
+  (até pra outro monitor), inclusive descendo por cima da barra de tarefas; a posição fica salva.
+  Dois ímãs: encostada em cima da barra, ou com a grama alinhada na linha da barra (a terra por cima dela). **Ctrl + roda do mouse** em cima dela muda o tamanho
   (Pequeno/Médio/Grande/Enorme = 1 a 4 pixels da tela por pixel de arte, sempre inteiro, pra não borrar).
   O card e os botões ficam sempre do lado da borda da tela: na metade esquerda vão pra esquerda;
   passando do meio, vão pra direita e a faixa fica presa na borda direita (quando cresce, cresce pra
